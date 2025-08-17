@@ -146,7 +146,7 @@ def copy_config_files(results_dir: Path) -> None:
     shutil.copy2("config/config.json", config_dest / "config.json")
 
 
-def save_agent_chat_log(results_dir: Path, agent_id: int, chat_history: List[Dict[str, Any]]) -> None:
+def save_agent_chat_log(results_dir: Path, agent_id: int, chat_history: List[Dict[str, Any]], suffix: str = "") -> None:
     """
     Save agent's chat history to JSON file.
     
@@ -154,22 +154,24 @@ def save_agent_chat_log(results_dir: Path, agent_id: int, chat_history: List[Dic
         results_dir: Path to the results directory
         agent_id: Unique identifier for the agent
         chat_history: List of chat messages and responses
+        suffix: Optional suffix to add to filename (e.g., "_PARTIAL")
     """
-    chat_log_path = results_dir / "chat_log" / f"agent_{agent_id}.json"
+    chat_log_path = results_dir / "chat_log" / f"agent_{agent_id}{suffix}.json"
     
     with open(chat_log_path, 'w') as f:
         json.dump(chat_history, f, indent=2, default=str)
 
 
-def save_agents_summary(results_dir: Path, agents_info: List[Tuple[int, str]]) -> None:
+def save_agents_summary(results_dir: Path, agents_info: List[Tuple[int, str]], suffix: str = "") -> None:
     """
     Save summary of agents (ID and type) to CSV.
     
     Args:
         results_dir: Path to the results directory
         agents_info: List of (agent_id, agent_type) tuples
+        suffix: Optional suffix to add to filename (e.g., "_PARTIAL")
     """
-    agents_summary_path = results_dir / "chat_log" / "agents.csv"
+    agents_summary_path = results_dir / "chat_log" / f"agents{suffix}.csv"
     
     with open(agents_summary_path, 'w', newline='') as f:
         writer = csv.writer(f)
@@ -177,15 +179,16 @@ def save_agents_summary(results_dir: Path, agents_info: List[Tuple[int, str]]) -
         writer.writerows(agents_info)
 
 
-def save_transactions(results_dir: Path, transactions: List[Dict[str, Any]]) -> None:
+def save_transactions(results_dir: Path, transactions: List[Dict[str, Any]], suffix: str = "") -> None:
     """
     Save transaction data to CSV file.
     
     Args:
         results_dir: Path to the results directory
         transactions: List of transaction dictionaries
+        suffix: Optional suffix to add to filename (e.g., "_PARTIAL")
     """
-    transactions_path = results_dir / "transactions.csv"
+    transactions_path = results_dir / f"transactions{suffix}.csv"
     
     if not transactions:
         # Create empty file with headers

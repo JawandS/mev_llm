@@ -118,11 +118,27 @@ class Simulation:
                 )
                 period_transactions.extend(agent_transactions)
                 
+            except RuntimeError as e:
+                # This is an LLM failure - save what we have and halt
+                self.logger.error(
+                    f"LLM error processing agent {agent.agent_id} in period {period_num}: {e}"
+                )
+                self.logger.info("Saving partial results before halting simulation")
+                
+                # Add any transactions collected in this period so far
+                self.transactions.extend(period_transactions)
+                
+                # Save partial results
+                self._save_partial_results(f"LLM_ERROR_Period_{period_num}_Agent_{agent.agent_id}")
+                
+                # Re-raise to halt simulation
+                raise RuntimeError(f"Simulation halted due to LLM error in period {period_num}: {e}") from e
+                
             except Exception as e:
                 self.logger.error(
-                    f"Error processing agent {agent.agent_id} in period {period_num}: {e}"
+                    f"Unexpected error processing agent {agent.agent_id} in period {period_num}: {e}"
                 )
-                # Continue with other agents even if one fails
+                # For non-LLM errors, continue with other agents
                 continue
         
         # Add period transactions to total
@@ -197,6 +213,55 @@ class Simulation:
         save_agents_summary(self.results_dir, agents_info)
         
         self.logger.info(f"Results saved to {self.results_dir}")
+    
+    def _save_partial_results(self, error_context: str) -> None:
+        """
+        Save partial simulation results when an error occurs.
+        
+        Args:
+            error_context: Description of the error context for file naming
+        """
+        self.logger.info(f"Saving partial results due to: {error_context}")
+        
+        # Create results directory if it doesn't exist
+        if self.results_dir is None:
+            self.results_dir = create_results_directory()
+            copy_config_files(self.results_dir)
+        
+        # Save transaction data with error marker
+        if self.transactions:
+            save_transactions(self.results_dir, self.transactions, suffix="_PARTIAL")
+        
+        # Save agent chat histories (including any error messages)
+        for agent in self.agents:
+            chat_history = agent.get_chat_history()
+            if chat_history:  # Only save if there's chat history
+                save_agent_chat_log(
+                    self.results_dir,
+                    agent.agent_id,
+                    chat_history,
+                    suffix="_PARTIAL"
+                )
+        
+        # Save agents summary
+        agents_info = [(agent.agent_id, agent.agent_type) for agent in self.agents]
+        save_agents_summary(self.results_dir, agents_info, suffix="_PARTIAL")
+        
+        # Save error information
+        error_file = self.results_dir / "ERROR_INFO.txt"
+        with open(error_file, 'w') as f:
+            f.write(f"Simulation Error Information\n")
+            f.write(f"="*50 + "\n\n")
+            f.write(f"Error Context: {error_context}\n")
+            f.write(f"Current Period: {self.current_period}\n")
+            f.write(f"Completed Periods: {self.current_period}\n")
+            f.write(f"Total Planned Periods: {self.num_periods}\n")
+            f.write(f"Transactions Recorded: {len(self.transactions)}\n")
+            f.write(f"Agents Created: {len(self.agents)}\n")
+            f.write(f"\nPartial results saved with '_PARTIAL' suffix\n")
+        
+        self.logger.info(f"Partial results saved to {self.results_dir}")
+        self.logger.info(f"Error information saved to {error_file}")
     
     def get_simulation_summary(self) -> Dict[str, Any]:
         """
