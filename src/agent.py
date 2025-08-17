@@ -100,16 +100,16 @@ class Agent:
         Returns:
             Net income (can be negative)
         """
-        actual_variable_cost = random.uniform(0, self.variable_cost)
-        net_income = self.income - self.fixed_cost - actual_variable_cost
+        self.actual_variable_cost = random.uniform(0, self.variable_cost)
+        net_income = self.income - self.fixed_cost - self.actual_variable_cost
         
         self.logger.debug(
             f"Period {self.period}: Income=${self.income:.2f}, "
-            f"Fixed=${self.fixed_cost:.2f}, Variable=${actual_variable_cost:.2f}, "
+            f"Fixed=${self.fixed_cost:.2f}, Variable=${self.actual_variable_cost:.2f}, "
             f"Net=${net_income:.2f}"
         )
         
-        return net_income, actual_variable_cost
+        return net_income, self.actual_variable_cost
     
     def decide_luxury_purchases(
         self, 
@@ -203,25 +203,31 @@ class Agent:
         Returns:
             Formatted prompt string
         """
-        prompt = f"""Economic simulation analysis for {self.agent_type}.
+        prompt = f"""You are a stateless computation engine. Your only function is to solve the following computational problem. Provide only the final numerical answer.
 
-Financial data:
-- Savings: {self.savings:.2f}
-- Income: {self.income:.2f}
-- Fixed expenses: {self.fixed_cost:.2f}
-- Variable expenses: {self.variable_cost:.2f}
-- Interest rate: {interest_rate:.1%}
-- Item cost: {luxury_cost_per_unit:.2f}
+## Problem Context
+This is an **optimization problem in expectation with limited information**. The goal is to find the optimal integer `Q`. The uncertainty arises because the Subtractive Value for future cycles is unknown. We can only use historical data (the average) to form an **expectation** of its future value.
 
-Simulation period: {self.period + 1}
+## Given Values
+- Initial Value (A): {self.savings:.2f}
+- Additive Value (B): {self.income:.2f}
+- Threshold Value (C): {self.fixed_cost:.2f}
+- Current Subtractive Value (D): {self.actual_variable_cost:.2f}
+- Divisor Value (E): {luxury_cost_per_unit:.2f}
 
-Calculate optimal purchase quantity for discretionary items based on:
-- Available funds
-- Interest opportunity cost
-- Consumer profile: {self.agent_type}
-- Financial prudence
+## Problem Statement
+Find the largest non-negative integer, `Q`, that maximizes the quantity while satisfying a constraint based on the **expected outcome** of the next cycle, formulated from the limited information available (`Value G`).
 
-Output format: Single integer (0 or greater)."""
+## Conditions and Algorithm
+1.  Define an intermediate value `R = A + B - C - D`.
+2.  **Condition 1 (Resource Limit):** `Q` must be less than or equal to `floor(R / E)`.
+3.  **Condition 2 (Expectation Constraint):** The value remaining after the transaction, `(R - (Q * E))`, must be greater than or equal to the *expected cost* of the next cycle. This expected cost is calculated as `(C + G)`.
+
+To find the solution, begin with the largest `Q` that satisfies Condition 1. Test it against Condition 2. If it fails, decrement `Q` by 1 and repeat the test until Condition 2 is met. The first `Q` that satisfies both is the answer. If no `Q >= 0` works, the answer is 0.
+
+## Required Output
+A single integer.
+"""
         
         return prompt
     
@@ -301,7 +307,7 @@ Output format: Single integer (0 or greater)."""
             'purchase_type': 'variable_cost',
             'purchase_quantity': 1,
             'required': True,
-            'amount': actual_variable_cost
+            'amount': self.actual_variable_cost
         })
         
         # Step 3: Decide on luxury purchases
