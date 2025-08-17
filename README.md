@@ -34,3 +34,38 @@ Each run of the simulation should generate a new subdirectory with the timestamp
 - Add other types of goods to buy each period (break luxury down into more categories)
 - Break fixed and random cost into discrete types of goods/services
 - Simulate CPI and pass it to the agents
+- Add initial savings based on agent type
+
+## Usage
+
+### Setup
+1. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+2. Configure your Google API key:
+   ```bash
+   cp config/.env.example config/.env
+   # Edit config/.env and add your Google API key
+   ```
+
+3. Adjust simulation parameters in `config/config.json` if needed
+
+### Running the Simulation
+```bash
+# Run with default settings
+python main.py
+
+# Run with verbose logging
+python main.py --verbose
+
+# Run tests
+python run_tests.py
+```
+
+### Output
+Results are saved to `results/[timestamp]/` containing:
+- `transactions.csv`: All transaction data
+- `chat_log/`: Agent LLM interaction logs
+- `config/`: Copy of configuration used
