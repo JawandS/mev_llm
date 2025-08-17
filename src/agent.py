@@ -61,7 +61,31 @@ class Agent:
         
         # Configure Gemini API
         genai.configure(api_key=api_key)
-        self.model = genai.GenerativeModel(model_name)
+        
+        # Configure safety settings to be more permissive for economic simulation
+        safety_settings = [
+            {
+                "category": "HARM_CATEGORY_HARASSMENT",
+                "threshold": "BLOCK_NONE"
+            },
+            {
+                "category": "HARM_CATEGORY_HATE_SPEECH",
+                "threshold": "BLOCK_NONE"
+            },
+            {
+                "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+                "threshold": "BLOCK_NONE"
+            },
+            {
+                "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
+                "threshold": "BLOCK_NONE"
+            }
+        ]
+        
+        self.model = genai.GenerativeModel(
+            model_name,
+            safety_settings=safety_settings
+        )
         self.generation_config = genai.types.GenerationConfig(
             temperature=temperature,
             max_output_tokens=max_tokens
@@ -112,17 +136,42 @@ class Agent:
                 generation_config=self.generation_config
             )
             
+            # Check if response is valid and has content
+            if not response.candidates:
+                self.logger.error("No candidates in response")
+                raise ValueError("No candidates in response")
+            
+            candidate = response.candidates[0]
+            
+            # Check finish reason
+            if candidate.finish_reason == 2:  # SAFETY
+                self.logger.error("Response was blocked by safety filters")
+                raise ValueError("Response blocked by safety filters")
+            elif candidate.finish_reason == 3:  # RECITATION
+                self.logger.error("Response was blocked due to recitation")
+                raise ValueError("Response blocked due to recitation")
+            elif candidate.finish_reason not in [0, 1]:  # UNSPECIFIED or STOP
+                self.logger.error(f"Response finished with reason: {candidate.finish_reason}")
+                raise ValueError(f"Invalid finish reason: {candidate.finish_reason}")
+            
+            # Check if content exists and has parts
+            if not candidate.content or not candidate.content.parts:
+                self.logger.error("No content parts in response")
+                raise ValueError("No content parts in response")
+            
+            response_text = response.text
+            
             # Log the interaction
             interaction = {
                 "period": self.period,
                 "prompt": prompt,
-                "response": response.text,
+                "response": response_text,
                 "timestamp": str(self.period)
             }
             self.chat_history.append(interaction)
             
             # Parse the response to get number of units
-            luxury_units = self._parse_luxury_response(response.text)
+            luxury_units = self._parse_luxury_response(response_text)
             
             self.logger.info(
                 f"Agent {self.agent_id} decided to buy {luxury_units} luxury units"
@@ -132,15 +181,16 @@ class Agent:
             
         except Exception as e:
             self.logger.error(f"Error in LLM call: {e}")
-            # Fallback: buy 0 luxury units if API fails
+            # Log the failed interaction
             self.chat_history.append({
                 "period": self.period,
                 "prompt": prompt,
                 "response": f"ERROR: {str(e)}",
-                "fallback_decision": 0,
+                "fallback_decision": "SIMULATION_HALTED",
                 "timestamp": str(self.period)
             })
-            return 0
+            # Halt execution by re-raising the exception
+            raise RuntimeError(f"LLM call failed for Agent {self.agent_id}: {e}") from e
     
     def _create_luxury_prompt(self, luxury_cost_per_unit: float, interest_rate: float) -> str:
         """
@@ -153,28 +203,25 @@ class Agent:
         Returns:
             Formatted prompt string
         """
-        prompt = f"""You are a {self.agent_type} making financial decisions.
+        prompt = f"""Economic simulation analysis for {self.agent_type}.
 
-Current Financial Situation:
-- Current savings: ${self.savings:.2f}
-- Monthly income: ${self.income:.2f}
-- Fixed monthly costs: ${self.fixed_cost:.2f}
-- Variable monthly costs: up to ${self.variable_cost:.2f}
+Financial data:
+- Savings: {self.savings:.2f}
+- Income: {self.income:.2f}
+- Fixed expenses: {self.fixed_cost:.2f}
+- Variable expenses: {self.variable_cost:.2f}
+- Interest rate: {interest_rate:.1%}
+- Item cost: {luxury_cost_per_unit:.2f}
 
-Investment Information:
-- Interest rate on savings: {interest_rate:.1%} per period
-- Cost per luxury unit: ${luxury_cost_per_unit:.2f}
+Simulation period: {self.period + 1}
 
-This is period {self.period + 1} of your financial planning.
+Calculate optimal purchase quantity for discretionary items based on:
+- Available funds
+- Interest opportunity cost
+- Consumer profile: {self.agent_type}
+- Financial prudence
 
-Given your current savings and financial profile as a {self.agent_type}, how many units of luxury goods would you like to purchase this period? Consider:
-
-1. Your current savings balance
-2. The opportunity cost of spending vs. earning interest
-3. Your spending patterns as a {self.agent_type}
-4. Your financial security needs
-
-Please respond with just a number (0 or higher) representing the number of luxury units you want to buy. Do not include any explanation, just the number."""
+Output format: Single integer (0 or greater)."""
         
         return prompt
     
@@ -286,8 +333,8 @@ Please respond with just a number (0 or higher) representing the number of luxur
                 f"(cost: ${total_luxury_cost:.2f}, savings: ${self.savings:.2f})"
             )
         
-        # Step 4: Apply interest to remaining savings
-        interest_earned = self.savings * interest_rate
+        # Step 4: Apply interest (deannualize) to remaining savings
+        interest_earned = self.savings * (interest_rate / 12)
         self.savings += interest_earned
         
         self.logger.info(
