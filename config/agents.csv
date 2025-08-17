@@ -1,0 +1,6 @@
+agent_type,income,fixed_cost,variable_cost
+young_professional,1200.0,400.0,400.0
+family,1800.0,600.0,600.0
+retiree,800.0,300.0,300.0
+student,300.0,200.0,200.0
+low_income,600.0,250.0,250.0
