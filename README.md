@@ -53,7 +53,7 @@ Each run of the simulation should generate a new subdirectory with the timestamp
        ollama pull phi3
        ```
 
-3. Adjust simulation parameters in `config/config.json` if needed (set "model_name" to your Ollama model, e.g., "phi3")
+3. Adjust simulation parameters in `config/config.json` if needed (set "model_name" to your Ollama model, e.g., "phi3", "llama3.2:1b", or "qwen2.5:0.5b")
 
 ### Running the Simulation
 ```bash

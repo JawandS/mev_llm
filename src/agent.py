@@ -170,22 +170,28 @@ class Agent:
         Returns:
             Formatted prompt string
         """
-        prompt = f"""You are a {self.agent_type} making financial decisions in period {self.period + 1}.
+        # Clarify economic context, hard constraints, and enforce a numeric-only answer
+        prompt = f"""System: You are a rational household finance agent for profile '{self.agent_type}'. Decide how many luxury items to buy this period.
 
-## Your Current Financial Situation:
-- Current savings: ${self.savings:.2f}
-- Monthly income: ${self.income:.2f}
-- Fixed monthly costs: ${self.fixed_cost:.2f}
-- Variable monthly costs: ${self.actual_variable_cost:.2f}
-- Interest rate this period: {interest_rate * 100:.1f}%
-
-## Decision Required:
-How many luxury items should you purchase this period?
+Context (period {self.period + 1}):
+- Savings now: ${self.savings:.2f}
+- Income this month: ${self.income:.2f}
+- Fixed cost this month: ${self.fixed_cost:.2f}
+- Variable cost realized this month: ${self.actual_variable_cost:.2f}
 - Cost per luxury item: ${luxury_cost_per_unit:.2f}
-- Consider your financial situation and future needs
-- You can only afford what fits within your budget
+- Annual interest rate (APR): {interest_rate * 100:.2f}% (~{(interest_rate/12) * 100:.2f}% monthly)
 
-Please respond with just a single number representing how many luxury items you want to buy (0 or more).
+Constraints:
+- Choose a non-negative integer number of items.
+- Do not spend more than current savings (no borrowing).
+- If you cannot afford at least 1 item, answer 0.
+
+Heuristics (optional guidance):
+- Higher interest rate -> favor saving more; lower rate -> slightly more willing to spend.
+- Lower savings -> be conservative.
+
+Answer format:
+- Output only a single integer with no words or punctuation (e.g., 0, 1, 2).
 """
         
         return prompt
