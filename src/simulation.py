@@ -40,7 +40,6 @@ class Simulation:
         # Load configuration and environment
         self.config = load_config()
         validate_config(self.config)
-        self.api_key = None
         self.agent_types_df = load_agent_types()
         
         # Initialize simulation state
@@ -82,7 +81,6 @@ class Simulation:
                     income=income,
                     fixed_cost=fixed_cost,
                     variable_cost=variable_cost,
-                    api_key=self.api_key,
                     model_name=self.config['llm']['model_name'],
                     temperature=self.config['llm']['temperature'],
                     max_tokens=self.config['llm']['max_tokens']

@@ -5,12 +5,11 @@ This repository is part of the MacroEconVue study. The goal of this repository i
 ## Model Steps
 1. Agent receives an `income` then pays the `fixed_cost` and `variable_cost` (random number between 0 and `variable_cost`) (all three numbers should be found in `config/agents.csv`)
 2. The the net income (calculated, can be negative) is applied to savings (tracked by each agent)
-3. The agent (via API call to gemini-2.5-flash) decides how many units of luxury to buy given their current savings and interest rate (cost per unit of luxury and and interest rate set in `config/config.json`)
+3. The agent (via API call to an Ollama LLM) decides how many units of luxury to buy given their current savings and interest rate (cost per unit of luxury and and interest rate set in `config/config.json`)
 4. The remaining savings (positive of negative) grow by the interest rate (set in `config/config.json`) and is persisted to the next period
 
 ## Files
 ### Config files (config directory)
-- `.env`: contains the API key for gemini (should only contain the API key)
 - `agents.csv`: configuration information for the different types of agents
 - `config.json`: contains information about the simulation, number / types of agents, periods, interest rate, etc.
 

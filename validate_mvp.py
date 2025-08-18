@@ -57,8 +57,7 @@ def validate_agent_functionality():
                 agent_type="young_professional",
                 income=1200.0,
                 fixed_cost=400.0,
-                variable_cost=400.0,
-                api_key="test_key"
+                variable_cost=400.0
             )
             
             # Test income calculation

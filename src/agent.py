@@ -27,8 +27,7 @@ class Agent:
         income: float, 
         fixed_cost: float, 
         variable_cost: float,
-        api_key: str,
-        model_name: str = "gemini-2.5-flash",
+        model_name: str = "llama3.2",
         temperature: float = 0.7,
         max_tokens: int = 1000
     ):
@@ -41,7 +40,6 @@ class Agent:
             income: Monthly income
             fixed_cost: Fixed monthly expenses
             variable_cost: Maximum variable monthly expenses
-            api_key: Google API key for Gemini
             model_name: Name of the LLM model to use
             temperature: LLM temperature for response variability
             max_tokens: Maximum tokens for LLM responses
@@ -55,6 +53,7 @@ class Agent:
         # Financial state
         self.savings = 0.0
         self.period = 0
+        self.actual_variable_cost = 0.0  # Initialize to 0
         
         # Chat history for this agent
         self.chat_history: List[Dict[str, Any]] = []
@@ -103,51 +102,36 @@ class Agent:
         prompt = self._create_luxury_prompt(luxury_cost_per_unit, interest_rate)
         
         try:
-            # Make API call to Gemini
-            response = self.model.generate_content(
-                prompt,
-                generation_config=self.generation_config
-            )
-            
-            # Check if response is valid and has content
-            if not response.candidates:
-                self.logger.error("No candidates in response")
-                raise ValueError("No candidates in response")
-            
-            candidate = response.candidates[0]
-            
-            # Check finish reason
-            if candidate.finish_reason == 2:  # SAFETY
-                self.logger.error("Response was blocked by safety filters")
-                raise ValueError("Response blocked by safety filters")
-            elif candidate.finish_reason == 3:  # RECITATION
-                self.logger.error("Response was blocked due to recitation")
-                # Call Ollama API (assumes Ollama is running locally)
-                response = requests.post(
-                    "http://localhost:11434/api/generate",
-                    json={
-                        "model": self.model_name,
-                        "prompt": prompt,
-                        "options": {
-                            "temperature": self.temperature,
-                            "num_predict": self.max_tokens
-                        }
-                    },
-                    timeout=60
-                )
-                response.raise_for_status()
-                data = response.json()
-                response_text = data.get("response", "")
-            
-            # Check if content exists and has parts
-                # Log the interaction
-                interaction = {
-                    "period": self.period,
+            # Call Ollama API (assumes Ollama is running locally)
+            response = requests.post(
+                "http://localhost:11434/api/generate",
+                json={
+                    "model": self.model_name,
                     "prompt": prompt,
-                    "response": response_text,
-                    "timestamp": str(self.period)
-                }
-                self.chat_history.append(interaction)
+                    "options": {
+                        "temperature": self.temperature,
+                        "num_predict": self.max_tokens
+                    }
+                },
+                timeout=60
+            )
+            response.raise_for_status()
+            data = response.json()
+            response_text = data.get("response", "")
+            
+            # Log the interaction
+            interaction = {
+                "period": self.period,
+                "prompt": prompt,
+                "response": response_text,
+                "timestamp": str(self.period)
+            }
+            self.chat_history.append(interaction)
+            
+            # Parse the response to get the number of luxury units
+            luxury_quantity = self._parse_luxury_response(response_text)
+            
+            return luxury_quantity
             
         except Exception as e:
             self.logger.error(f"Error in LLM call: {e}")
@@ -156,11 +140,11 @@ class Agent:
                 "period": self.period,
                 "prompt": prompt,
                 "response": f"ERROR: {str(e)}",
-                "fallback_decision": "SIMULATION_HALTED",
+                "fallback_decision": "0",
                 "timestamp": str(self.period)
             })
-            # Halt execution by re-raising the exception
-            raise RuntimeError(f"LLM call failed for Agent {self.agent_id}: {e}") from e
+            # Return 0 on error instead of halting simulation
+            return 0
     
     def _create_luxury_prompt(self, luxury_cost_per_unit: float, interest_rate: float) -> str:
         """
@@ -173,30 +157,22 @@ class Agent:
         Returns:
             Formatted prompt string
         """
-        prompt = f"""You are a stateless computation engine. Your only function is to solve the following computational problem. Provide only the final numerical answer.
+        prompt = f"""You are a {self.agent_type} making financial decisions in period {self.period + 1}.
 
-## Problem Context
-This is an **optimization problem in expectation with limited information**. The goal is to find the optimal integer `Q`. The uncertainty arises because the Subtractive Value for future cycles is unknown. We can only use historical data (the average) to form an **expectation** of its future value.
+## Your Current Financial Situation:
+- Current savings: ${self.savings:.2f}
+- Monthly income: ${self.income:.2f}
+- Fixed monthly costs: ${self.fixed_cost:.2f}
+- Variable monthly costs: ${self.actual_variable_cost:.2f}
+- Interest rate this period: {interest_rate * 100:.1f}%
 
-## Given Values
-- Initial Value (A): {self.savings:.2f}
-- Additive Value (B): {self.income:.2f}
-- Threshold Value (C): {self.fixed_cost:.2f}
-- Current Subtractive Value (D): {self.actual_variable_cost:.2f}
-- Divisor Value (E): {luxury_cost_per_unit:.2f}
+## Decision Required:
+How many luxury items should you purchase this period?
+- Cost per luxury item: ${luxury_cost_per_unit:.2f}
+- Consider your financial situation and future needs
+- You can only afford what fits within your budget
 
-## Problem Statement
-Find the largest non-negative integer, `Q`, that maximizes the quantity while satisfying a constraint based on the **expected outcome** of the next cycle, formulated from the limited information available (`Value G`).
-
-## Conditions and Algorithm
-1.  Define an intermediate value `R = A + B - C - D`.
-2.  **Condition 1 (Resource Limit):** `Q` must be less than or equal to `floor(R / E)`.
-3.  **Condition 2 (Expectation Constraint):** The value remaining after the transaction, `(R - (Q * E))`, must be greater than or equal to the *expected cost* of the next cycle. This expected cost is calculated as `(C + G)`.
-
-To find the solution, begin with the largest `Q` that satisfies Condition 1. Test it against Condition 2. If it fails, decrement `Q` by 1 and repeat the test until Condition 2 is met. The first `Q` that satisfies both is the answer. If no `Q >= 0` works, the answer is 0.
-
-## Required Output
-A single integer.
+Please respond with just a single number representing how many luxury items you want to buy (0 or more).
 """
         
         return prompt
@@ -212,9 +188,10 @@ A single integer.
             Number of luxury units (non-negative integer)
         """
         try:
-            # Extract first number from response
+            # Extract first number from response (including negative numbers)
             import re
-            numbers = re.findall(r'\d+', response_text)
+            # Look for numbers (including negative ones)
+            numbers = re.findall(r'-?\d+', response_text)
             
             if numbers:
                 luxury_units = int(numbers[0])

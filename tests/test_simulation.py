@@ -42,15 +42,14 @@ class TestSimulation(unittest.TestCase):
     @patch('src.simulation.validate_config')
     @patch('src.simulation.setup_logging')
     def test_simulation_initialization(self, mock_setup_logging, mock_validate, 
-                                     mock_load_config, mock_load_agent_types, 
-                                     mock_load_env):
+                                     mock_load_config, mock_load_agent_types
+                                     ):
         """Test simulation initialization."""
         # Setup mocks
         mock_logger = Mock()
         mock_setup_logging.return_value = mock_logger
         mock_load_config.return_value = self.mock_config
         mock_load_agent_types.return_value = self.mock_agent_types
-        mock_load_env.return_value = "test_api_key"
         
         # Create simulation
         simulation = Simulation()
@@ -68,25 +67,22 @@ class TestSimulation(unittest.TestCase):
         mock_setup_logging.assert_called_once()
         mock_load_config.assert_called_once()
         mock_load_agent_types.assert_called_once()
-        mock_load_env.assert_called_once()
         mock_validate.assert_called_once_with(self.mock_config)
     
-    @patch('src.simulation.load_environment')
     @patch('src.simulation.load_agent_types')
     @patch('src.simulation.load_config')
     @patch('src.simulation.validate_config')
     @patch('src.simulation.setup_logging')
     @patch('src.simulation.Agent')
     def test_create_agents(self, mock_agent_class, mock_setup_logging, 
-                          mock_validate, mock_load_config, mock_load_agent_types, 
-                          mock_load_env):
+                          mock_validate, mock_load_config, mock_load_agent_types
+                          ):
         """Test agent creation."""
         # Setup mocks
         mock_logger = Mock()
         mock_setup_logging.return_value = mock_logger
         mock_load_config.return_value = self.mock_config
         mock_load_agent_types.return_value = self.mock_agent_types
-        mock_load_env.return_value = "test_api_key"
         
         # Mock Agent constructor
         mock_agents = []
@@ -121,20 +117,18 @@ class TestSimulation(unittest.TestCase):
         assert calls[2][1]['agent_id'] == 2
         assert calls[3][1]['agent_id'] == 3
     
-    @patch('src.simulation.load_environment')
     @patch('src.simulation.load_agent_types')
     @patch('src.simulation.load_config')
     @patch('src.simulation.validate_config')
     @patch('src.simulation.setup_logging')
     def test_run_period(self, mock_setup_logging, mock_validate, 
-                       mock_load_config, mock_load_agent_types, mock_load_env):
+                       mock_load_config, mock_load_agent_types):
         """Test running a single period."""
         # Setup mocks
         mock_logger = Mock()
         mock_setup_logging.return_value = mock_logger
         mock_load_config.return_value = self.mock_config
         mock_load_agent_types.return_value = self.mock_agent_types
-        mock_load_env.return_value = "test_api_key"
         
         # Create simulation
         simulation = Simulation()
@@ -166,21 +160,19 @@ class TestSimulation(unittest.TestCase):
         assert simulation.transactions[0]['agent_id'] == 1
         assert simulation.transactions[1]['agent_id'] == 2
     
-    @patch('src.simulation.load_environment')
     @patch('src.simulation.load_agent_types')
     @patch('src.simulation.load_config')
     @patch('src.simulation.validate_config')
     @patch('src.simulation.setup_logging')
     def test_run_period_with_agent_error(self, mock_setup_logging, mock_validate, 
-                                        mock_load_config, mock_load_agent_types, 
-                                        mock_load_env):
+                                        mock_load_config, mock_load_agent_types
+                                        ):
         """Test running period when an agent encounters an error."""
         # Setup mocks
         mock_logger = Mock()
         mock_setup_logging.return_value = mock_logger
         mock_load_config.return_value = self.mock_config
         mock_load_agent_types.return_value = self.mock_agent_types
-        mock_load_env.return_value = "test_api_key"
         
         # Create simulation
         simulation = Simulation()
@@ -207,13 +199,12 @@ class TestSimulation(unittest.TestCase):
     
     @patch('src.simulation.create_results_directory')
     @patch('src.simulation.copy_config_files')
-    @patch('src.simulation.load_environment')
     @patch('src.simulation.load_agent_types')
     @patch('src.simulation.load_config')
     @patch('src.simulation.validate_config')
     @patch('src.simulation.setup_logging')
     def test_run_simulation(self, mock_setup_logging, mock_validate, 
-                           mock_load_config, mock_load_agent_types, mock_load_env,
+                           mock_load_config, mock_load_agent_types,
                            mock_copy_config, mock_create_results):
         """Test complete simulation run."""
         # Setup mocks
@@ -221,7 +212,6 @@ class TestSimulation(unittest.TestCase):
         mock_setup_logging.return_value = mock_logger
         mock_load_config.return_value = self.mock_config
         mock_load_agent_types.return_value = self.mock_agent_types
-        mock_load_env.return_value = "test_api_key"
         
         mock_results_dir = Path("/tmp/test_results")
         mock_create_results.return_value = mock_results_dir
@@ -255,13 +245,12 @@ class TestSimulation(unittest.TestCase):
     @patch('src.simulation.save_transactions')
     @patch('src.simulation.save_agent_chat_log')
     @patch('src.simulation.save_agents_summary')
-    @patch('src.simulation.load_environment')
     @patch('src.simulation.load_agent_types')
     @patch('src.simulation.load_config')
     @patch('src.simulation.validate_config')
     @patch('src.simulation.setup_logging')
     def test_save_results(self, mock_setup_logging, mock_validate, 
-                         mock_load_config, mock_load_agent_types, mock_load_env,
+                         mock_load_config, mock_load_agent_types,
                          mock_save_agents_summary, mock_save_agent_chat_log,
                          mock_save_transactions):
         """Test saving simulation results."""
@@ -270,7 +259,6 @@ class TestSimulation(unittest.TestCase):
         mock_setup_logging.return_value = mock_logger
         mock_load_config.return_value = self.mock_config
         mock_load_agent_types.return_value = self.mock_agent_types
-        mock_load_env.return_value = "test_api_key"
         
         # Create simulation
         simulation = Simulation()
@@ -310,21 +298,18 @@ class TestSimulation(unittest.TestCase):
             simulation.results_dir, [(1, 'young_professional'), (2, 'family')]
         )
     
-    @patch('src.simulation.load_environment')
     @patch('src.simulation.load_agent_types')
     @patch('src.simulation.load_config')
     @patch('src.simulation.validate_config')
     @patch('src.simulation.setup_logging')
     def test_get_simulation_summary(self, mock_setup_logging, mock_validate, 
-                                   mock_load_config, mock_load_agent_types, 
-                                   mock_load_env):
+                                   mock_load_config, mock_load_agent_types):
         """Test getting simulation summary."""
         # Setup mocks
         mock_logger = Mock()
         mock_setup_logging.return_value = mock_logger
         mock_load_config.return_value = self.mock_config
         mock_load_agent_types.return_value = self.mock_agent_types
-        mock_load_env.return_value = "test_api_key"
         
         # Create simulation
         simulation = Simulation()
@@ -375,21 +360,19 @@ class TestSimulation(unittest.TestCase):
         assert summary['luxury_by_agent_type']['young_professional'] == 2
         assert summary['luxury_by_agent_type']['family'] == 1
     
-    @patch('src.simulation.load_environment')
     @patch('src.simulation.load_agent_types')
     @patch('src.simulation.load_config')
     @patch('src.simulation.validate_config')
     @patch('src.simulation.setup_logging')
     def test_get_simulation_summary_no_transactions(self, mock_setup_logging, 
                                                    mock_validate, mock_load_config, 
-                                                   mock_load_agent_types, mock_load_env):
+                                                   mock_load_agent_types):
         """Test getting summary when no transactions exist."""
         # Setup mocks
         mock_logger = Mock()
         mock_setup_logging.return_value = mock_logger
         mock_load_config.return_value = self.mock_config
         mock_load_agent_types.return_value = self.mock_agent_types
-        mock_load_env.return_value = "test_api_key"
         
         # Create simulation with no transactions
         simulation = Simulation()
