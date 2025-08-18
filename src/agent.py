@@ -111,9 +111,10 @@ class Agent:
                     "options": {
                         "temperature": self.temperature,
                         "num_predict": self.max_tokens
-                    }
+                    },
+                    "stream": False  # Disable streaming to get a single JSON response
                 },
-                timeout=60
+                timeout=5
             )
             response.raise_for_status()
             data = response.json()

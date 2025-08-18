@@ -109,6 +109,7 @@ class Simulation:
         
         # Process each agent for this period
         for agent in self.agents:
+            print(f"Processing agent {agent.agent_id} ({agent.agent_type}) in period {period_num + 1}")
             try:
                 agent_transactions = agent.process_period(
                     self.luxury_cost_per_unit,
