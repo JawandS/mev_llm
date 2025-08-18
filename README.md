@@ -17,12 +17,11 @@ This repository is part of the MacroEconVue study. The goal of this repository i
 ### Core files (src directory)
 - `simulation.py`: primary file, contains the simulation logic, orchestrates agents and tracks overall data
 - `agent.py`: used by the primary simulation logic for API calls, tracking information like income and savings
-- `utils.py`: logic such as logging, outputing transaction data, loading dotenv, etc.
+- `utils.py`: logic such as logging, outputing transaction data, etc.
 
 ### Output files (results.directory)
 Each run of the simulation should generate a new subdirectory with the timestamp (dd-mm-yy_hh:mm:ss). The following files/directories should be created
 - chat_log/: a subdirectory with information on the various agnets
-   - chat_log/agent_\[id\].json: API history of each agent with the id of each agent
    - chat_log/agents.csv: a list of each agent id and the type of agent it was 
 - config/: a subdirectory with information on used in that simulation run
    - config/agents.csv: a copy of the outer directory config/agents.csv
@@ -44,13 +43,18 @@ Each run of the simulation should generate a new subdirectory with the timestamp
    pip install -r requirements.txt
    ```
 
-2. Configure your Google API key:
-   ```bash
-   cp config/.env.example config/.env
-   # Edit config/.env and add your Google API key
-   ```
+2. Install and run Ollama (for LLM agent):
+    - Download and install Ollama from https://ollama.com/download
+    - Start Ollama server:
+       ```bash
+       ollama serve
+       ```
+    - Pull a lightweight model (recommended: phi3):
+       ```bash
+       ollama pull phi3
+       ```
 
-3. Adjust simulation parameters in `config/config.json` if needed
+3. Adjust simulation parameters in `config/config.json` if needed (set "model_name" to your Ollama model, e.g., "phi3")
 
 ### Running the Simulation
 ```bash

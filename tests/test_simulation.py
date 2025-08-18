@@ -37,7 +37,6 @@ class TestSimulation(unittest.TestCase):
             'variable_cost': [400.0, 600.0]
         })
     
-    @patch('src.simulation.load_environment')
     @patch('src.simulation.load_agent_types')
     @patch('src.simulation.load_config')
     @patch('src.simulation.validate_config')

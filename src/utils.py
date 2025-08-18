@@ -15,7 +15,6 @@ import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Any, Tuple
-from dotenv import load_dotenv
 import pandas as pd
 
 
@@ -37,26 +36,6 @@ def setup_logging(level: str = "INFO") -> logging.Logger:
     return logging.getLogger(__name__)
 
 
-def load_environment() -> str:
-    """
-    Load environment variables from .env file.
-    
-    Returns:
-        Google API key for Gemini
-        
-    Raises:
-        ValueError: If API key is not found
-    """
-    load_dotenv(Path("config/.env"))
-    api_key = os.getenv("GOOGLE_API_KEY")
-    
-    if not api_key:
-        raise ValueError(
-            "GOOGLE_API_KEY not found in environment. "
-            "Please create config/.env with your API key."
-        )
-    
-    return api_key
 
 
 def load_config() -> Dict[str, Any]:

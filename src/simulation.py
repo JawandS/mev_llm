@@ -13,7 +13,7 @@ import pandas as pd
 
 from .agent import Agent
 from .utils import (
-    setup_logging, load_environment, load_config, load_agent_types,
+    setup_logging, load_config, load_agent_types,
     create_results_directory, copy_config_files, save_agent_chat_log,
     save_agents_summary, save_transactions, validate_config
 )
@@ -40,7 +40,7 @@ class Simulation:
         # Load configuration and environment
         self.config = load_config()
         validate_config(self.config)
-        self.api_key = load_environment()
+        self.api_key = None
         self.agent_types_df = load_agent_types()
         
         # Initialize simulation state

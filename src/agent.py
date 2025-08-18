@@ -9,7 +9,7 @@ decision making for luxury purchases.
 import random
 import logging
 from typing import Dict, List, Any, Optional
-import google.generativeai as genai
+import requests
 
 
 class Agent:
@@ -59,38 +59,11 @@ class Agent:
         # Chat history for this agent
         self.chat_history: List[Dict[str, Any]] = []
         
-        # Configure Gemini API
-        genai.configure(api_key=api_key)
-        
-        # Configure safety settings to be more permissive for economic simulation
-        safety_settings = [
-            {
-                "category": "HARM_CATEGORY_HARASSMENT",
-                "threshold": "BLOCK_NONE"
-            },
-            {
-                "category": "HARM_CATEGORY_HATE_SPEECH",
-                "threshold": "BLOCK_NONE"
-            },
-            {
-                "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-                "threshold": "BLOCK_NONE"
-            },
-            {
-                "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
-                "threshold": "BLOCK_NONE"
-            }
-        ]
-        
-        self.model = genai.GenerativeModel(
-            model_name,
-            safety_settings=safety_settings
-        )
-        self.generation_config = genai.types.GenerationConfig(
-            temperature=temperature,
-            max_output_tokens=max_tokens
-        )
-        
+        # Ollama model configuration
+        self.model_name = model_name
+        self.temperature = temperature
+        self.max_tokens = max_tokens
+            
         self.logger = logging.getLogger(f"Agent_{agent_id}")
         
     def calculate_net_income(self) -> float:
@@ -149,35 +122,32 @@ class Agent:
                 raise ValueError("Response blocked by safety filters")
             elif candidate.finish_reason == 3:  # RECITATION
                 self.logger.error("Response was blocked due to recitation")
-                raise ValueError("Response blocked due to recitation")
-            elif candidate.finish_reason not in [0, 1]:  # UNSPECIFIED or STOP
-                self.logger.error(f"Response finished with reason: {candidate.finish_reason}")
-                raise ValueError(f"Invalid finish reason: {candidate.finish_reason}")
+                # Call Ollama API (assumes Ollama is running locally)
+                response = requests.post(
+                    "http://localhost:11434/api/generate",
+                    json={
+                        "model": self.model_name,
+                        "prompt": prompt,
+                        "options": {
+                            "temperature": self.temperature,
+                            "num_predict": self.max_tokens
+                        }
+                    },
+                    timeout=60
+                )
+                response.raise_for_status()
+                data = response.json()
+                response_text = data.get("response", "")
             
             # Check if content exists and has parts
-            if not candidate.content or not candidate.content.parts:
-                self.logger.error("No content parts in response")
-                raise ValueError("No content parts in response")
-            
-            response_text = response.text
-            
-            # Log the interaction
-            interaction = {
-                "period": self.period,
-                "prompt": prompt,
-                "response": response_text,
-                "timestamp": str(self.period)
-            }
-            self.chat_history.append(interaction)
-            
-            # Parse the response to get number of units
-            luxury_units = self._parse_luxury_response(response_text)
-            
-            self.logger.info(
-                f"Agent {self.agent_id} decided to buy {luxury_units} luxury units"
-            )
-            
-            return luxury_units
+                # Log the interaction
+                interaction = {
+                    "period": self.period,
+                    "prompt": prompt,
+                    "response": response_text,
+                    "timestamp": str(self.period)
+                }
+                self.chat_history.append(interaction)
             
         except Exception as e:
             self.logger.error(f"Error in LLM call: {e}")

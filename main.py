@@ -21,17 +21,16 @@ def parse_arguments():
     parser = argparse.ArgumentParser(
         description="MEV LLM Economic Simulation",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
+                epilog="""
 Examples:
-  python main.py                    # Run simulation with default config
-  python main.py --verbose          # Run with verbose logging
-  
+    python main.py                    # Run simulation with default config
+    python main.py --verbose          # Run with verbose logging
+
 Before running:
-  1. Copy config/.env.example to config/.env
-  2. Add your Google API key to config/.env
-  3. Adjust config/config.json if needed
-  4. Install dependencies: pip install -r requirements.txt
-        """
+    1. Ensure Ollama is installed and running locally (https://ollama.com/download)
+    2. Adjust config/config.json if needed (set model_name to an Ollama model)
+    3. Install dependencies: pip install -r requirements.txt
+                """
     )
     
     parser.add_argument(
@@ -58,38 +57,29 @@ def check_prerequisites():
     """
     issues = []
     
-    # Check if .env file exists
-    env_file = Path("config/.env")
-    if not env_file.exists():
-        issues.append(
-            "❌ config/.env file not found. "
-            "Copy config/.env.example to config/.env and add your API key."
-        )
-    
     # Check if config files exist
     config_file = Path("config/config.json")
     if not config_file.exists():
         issues.append("❌ config/config.json not found")
-    
+
     agents_file = Path("config/agents.csv")
     if not agents_file.exists():
         issues.append("❌ config/agents.csv not found")
-    
+
     # Check if required Python packages are installed
     try:
-        import google.generativeai
         import pandas
-        import dotenv
+        import requests
     except ImportError as e:
         issues.append(f"❌ Missing required package: {e.name}. Run: pip install -r requirements.txt")
-    
+
     if issues:
         print("⚠️  Prerequisites not met:")
         for issue in issues:
             print(f"   {issue}")
         print("\nPlease fix these issues before running the simulation.")
         return False
-    
+
     return True
 
 
