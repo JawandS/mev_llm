@@ -98,6 +98,18 @@ class Agent:
         Returns:
             Number of luxury units to purchase
         """
+        # Skip LLM call if agent has negative savings (can't afford anything)
+        if self.savings <= 0:
+            self.logger.debug(f"Agent {self.agent_id} has negative/zero savings (${self.savings:.2f}), skipping LLM call")
+            # Log the skipped interaction
+            self.chat_history.append({
+                "period": self.period,
+                "prompt": "SKIPPED: Negative/zero savings",
+                "response": "0 (automatic - insufficient funds)",
+                "timestamp": str(self.period)
+            })
+            return 0
+        
         # Create prompt for the LLM
         prompt = self._create_luxury_prompt(luxury_cost_per_unit, interest_rate)
         
