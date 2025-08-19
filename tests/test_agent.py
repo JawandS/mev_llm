@@ -95,6 +95,9 @@ class TestAgent(unittest.TestCase):
     @patch('src.agent.requests')
     def test_decide_luxury_purchases_success(self, mock_requests):
         """Test successful luxury purchase decision."""
+        # Set savings to positive amount so LLM call is made
+        self.agent.savings = 200.0
+        
         # Mock the Ollama API response
         mock_response = Mock()
         mock_response.json.return_value = {"response": "I want to buy 2 luxury units."}
@@ -110,6 +113,9 @@ class TestAgent(unittest.TestCase):
     @patch('src.agent.requests')
     def test_decide_luxury_purchases_api_error(self, mock_requests):
         """Test luxury purchase decision with API error."""
+        # Set savings to positive amount so LLM call is attempted
+        self.agent.savings = 100.0
+        
         # Mock the Ollama API to raise an exception
         mock_requests.post.side_effect = Exception("API Error")
         
@@ -155,8 +161,8 @@ class TestAgent(unittest.TestCase):
                 # Initial: 1000
                 # + Net income: 1200 - 400 - 300 = 500
                 # - Luxury: 100
-                # + Interest: (1000 + 500 - 100) * 0.02 = 28
-                expected_savings = 1000 + 500 - 100 + (1400 * 0.02)
+                # + Interest: (1000 + 500 - 100) * (0.02/12) = 1400 * (0.02/12) = ~2.33
+                expected_savings = 1000 + 500 - 100 + (1400 * (0.02/12))
                 assert abs(self.agent.savings - expected_savings) < 0.01
                 
                 # Check period increment
@@ -170,7 +176,11 @@ class TestAgent(unittest.TestCase):
             mock_random.return_value = 300.0
             
             with patch.object(self.agent, 'decide_luxury_purchases') as mock_decide:
-                mock_decide.return_value = 5  # Try to buy 5 units (250 cost) but only have ~550 savings
+                # Agent wants to buy 5 units (250 cost) but after income they'll have:
+                # 50 + (1200 - 400 - 300) = 50 + 500 = 550 savings
+                # So they CAN afford 5 units at 50 each = 250 cost
+                # Let's make them want to buy more than they can afford
+                mock_decide.return_value = 15  # Try to buy 15 units (750 cost) but only have 550 savings
                 
                 transactions = self.agent.process_period(50.0, 0.02)
                 

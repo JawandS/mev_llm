@@ -12,6 +12,7 @@ import csv
 from pathlib import Path
 import pandas as pd
 from unittest.mock import patch, mock_open
+from datetime import datetime
 
 import sys
 sys.path.append('../src')
@@ -153,15 +154,15 @@ class TestResultsHandling:
     
     def test_create_results_directory(self):
         """Test creation of results directory."""
-        with patch('src.utils.Path') as mock_path:
-            mock_dir = mock_path.return_value
-            mock_dir.mkdir.return_value = None
+        with patch('src.utils.datetime') as mock_datetime:
+            mock_datetime.now.return_value.strftime.return_value = "01-01-25_12:00:00"
             
             result = create_results_directory()
             
-            # Check that directories were created
-            mock_dir.mkdir.assert_called()
-            assert "results/" in str(result)
+            # Check that the result contains the expected path structure
+            assert "results/01-01-25_12:00:00" in str(result)
+            # The directory should exist (this will create it for real)
+            assert result.exists()
     
     def test_save_agent_chat_log(self):
         """Test saving agent chat log."""
