@@ -1,9 +1,19 @@
 """
 Agent implementation for the MEV LLM Economic Simulation.
 
-This module provides the Agent class that represents individual economic actors
-in the simulation. Each agent has financial characteristics and uses LLM-based
-decision making for luxury purchases.
+This module provides the Agent class that represents rational economic actors
+in the simulation. Each agent follows microeconomic principles for household
+decision-making:
+
+- Receives periodic income and pays mandatory expenses
+- Makes utility-maximizing decisions about discretionary consumption
+- Considers opportunity costs, risk management, and future security
+- Uses LLM-based reasoning to balance immediate gratification vs. saving
+
+The simulation follows a coherent economic sequence each period:
+1. Income receipt and mandatory expense payment
+2. Rational luxury consumption decision (LLM-based)
+3. Interest application to remaining savings
 """
 
 import random
@@ -14,10 +24,17 @@ import requests
 
 class Agent:
     """
-    Represents an individual economic agent in the simulation.
+    Represents a rational economic agent in the simulation.
     
-    Each agent has income, fixed costs, variable costs, and savings.
-    Agents use LLM calls to make decisions about luxury purchases.
+    Each agent follows standard microeconomic principles:
+    1. Receives periodic income and pays mandatory expenses (fixed + variable costs)
+    2. Makes utility-maximizing decisions about discretionary luxury consumption
+    3. Considers opportunity costs (interest foregone) and risk management
+    4. Maintains savings that grow at the prevailing interest rate
+    
+    The agent uses LLM-based decision making to balance immediate consumption
+    utility against future financial security, following rational household
+    economic theory.
     """
     
     def __init__(
@@ -89,32 +106,23 @@ class Agent:
         interest_rate: float
     ) -> int:
         """
-        Use LLM to decide how many luxury units to purchase.
+        Use LLM to make rational luxury purchase decision based on economic optimization.
+        
+        The LLM is always consulted to maintain complete economic information,
+        even when financially constrained, to enable learning and realistic modeling.
         
         Args:
             luxury_cost_per_unit: Cost per unit of luxury goods
-            interest_rate: Current interest rate
+            interest_rate: Annual interest rate (opportunity cost)
             
         Returns:
-            Number of luxury units to purchase
+            Number of luxury units to purchase (optimal choice)
         """
-        # Skip LLM call if agent has negative savings (can't afford anything)
-        if self.savings <= 0:
-            self.logger.debug(f"Agent {self.agent_id} has negative/zero savings (${self.savings:.2f}), skipping LLM call")
-            # Log the skipped interaction
-            self.chat_history.append({
-                "period": self.period,
-                "prompt": "SKIPPED: Negative/zero savings",
-                "response": "0 (automatic - insufficient funds)",
-                "timestamp": str(self.period)
-            })
-            return 0
-        
-        # Create prompt for the LLM
+        # Always create rational economic decision prompt (even if constrained)
         prompt = self._create_luxury_prompt(luxury_cost_per_unit, interest_rate)
         
         try:
-            # Call Ollama API (assumes Ollama is running locally)
+            # Call Ollama API for rational decision-making
             response = requests.post(
                 "http://localhost:11434/api/generate",
                 json={
@@ -124,39 +132,58 @@ class Agent:
                         "temperature": self.temperature,
                         "num_predict": self.max_tokens
                     },
-                    "stream": False  # Disable streaming to get a single JSON response
+                    "stream": False
                 },
-                timeout=5
+                timeout=30
             )
             response.raise_for_status()
             data = response.json()
             response_text = data.get("response", "")
             
-            # Log the interaction
+            # Determine if this was a constrained or unconstrained decision
+            can_afford_any = self.savings >= luxury_cost_per_unit
+            decision_type = "llm_rational_choice" if can_afford_any else "llm_constrained_choice"
+            
+            # Log the rational decision interaction
             interaction = {
                 "period": self.period,
                 "prompt": prompt,
                 "response": response_text,
-                "timestamp": str(self.period)
+                "timestamp": str(self.period),
+                "decision_type": decision_type,
+                "financially_constrained": not can_afford_any
             }
             self.chat_history.append(interaction)
             
-            # Parse the response to get the number of luxury units
+            # Parse and validate the economic decision
             luxury_quantity = self._parse_luxury_response(response_text)
+            
+            # Economic validation: Ensure decision doesn't exceed budget
+            max_affordable = max(0, int(self.savings // luxury_cost_per_unit)) if luxury_cost_per_unit > 0 else 0
+            if luxury_quantity > max_affordable:
+                original_quantity = luxury_quantity
+                luxury_quantity = max_affordable
+                self.logger.info(
+                    f"Agent {self.agent_id} chose {original_quantity} units but constrained to "
+                    f"affordable maximum {max_affordable} (savings: ${self.savings:.2f})"
+                )
+                # Add constraint enforcement to chat history
+                interaction["constraint_applied"] = f"Reduced from {original_quantity} to {max_affordable} (budget limit)"
             
             return luxury_quantity
             
         except Exception as e:
-            self.logger.error(f"Error in LLM call: {e}")
-            # Log the failed interaction
+            self.logger.error(f"Error in LLM economic decision: {e}")
+            # Log the failed decision with fallback
             self.chat_history.append({
                 "period": self.period,
                 "prompt": prompt,
                 "response": f"ERROR: {str(e)}",
                 "fallback_decision": "0",
-                "timestamp": str(self.period)
+                "timestamp": str(self.period),
+                "decision_type": "error_fallback"
             })
-            # Return 0 on error instead of halting simulation
+            # Conservative fallback: no luxury purchases during errors
             return 0
     
     def _create_luxury_prompt(self, luxury_cost_per_unit: float, interest_rate: float) -> str:
@@ -170,29 +197,83 @@ class Agent:
         Returns:
             Formatted prompt string
         """
-        # Clarify economic context, hard constraints, and enforce a numeric-only answer
-        prompt = f"""System: You are a rational household finance agent for profile '{self.agent_type}'. Decide how many luxury items to buy this period.
+        # Calculate key economic metrics for decision-making
+        max_affordable = max(0, int(self.savings // luxury_cost_per_unit)) if luxury_cost_per_unit > 0 else 0
+        monthly_interest_rate = interest_rate / 12
+        
+        # Calculate what savings would be worth next period if saved
+        potential_savings_growth = self.savings * (1 + monthly_interest_rate)
+        
+        # Calculate expected net income for risk assessment
+        expected_variable_cost = self.variable_cost / 2  # Average of 0 to variable_cost
+        expected_net_income = self.income - self.fixed_cost - expected_variable_cost
+        
+        # Determine financial constraint status
+        financial_status = ""
+        if max_affordable == 0:
+            if self.savings <= 0:
+                financial_status = "⚠️  FINANCIAL STRESS: You have negative/zero savings and cannot afford any luxury purchases."
+            else:
+                financial_status = f"⚠️  BUDGET CONSTRAINT: Your savings (${self.savings:.2f}) are insufficient for even one luxury item (${luxury_cost_per_unit:.2f})."
+        elif max_affordable == 1:
+            financial_status = f"💰 TIGHT BUDGET: You can afford only {max_affordable} luxury item, requiring careful consideration."
+        elif max_affordable <= 3:
+            financial_status = f"💰 LIMITED OPTIONS: You can afford up to {max_affordable} luxury items - moderate financial flexibility."
+        else:
+            financial_status = f"💰 FINANCIAL FLEXIBILITY: You can afford up to {max_affordable} luxury items - good financial position."
+        
+        # Add savings buffer analysis
+        if self.savings > 0:
+            months_of_coverage = self.savings / (self.fixed_cost + expected_variable_cost)
+            if months_of_coverage < 1:
+                financial_status += f"\n⚠️  RISK WARNING: Current savings only cover {months_of_coverage:.1f} months of expenses."
+            elif months_of_coverage < 3:
+                financial_status += f"\n⚠️  LOW BUFFER: Current savings cover {months_of_coverage:.1f} months of expenses (recommended: 3+ months)."
+        
+        prompt = f"""You are a rational economic agent managing household finances for a '{self.agent_type}' profile. Your goal is to maximize utility by balancing immediate luxury consumption against future financial security.
 
-Context (period {self.period + 1}):
-- Savings now: ${self.savings:.2f}
-- Income this month: ${self.income:.2f}
-- Fixed cost this month: ${self.fixed_cost:.2f}
-- Variable cost realized this month: ${self.actual_variable_cost:.2f}
-- Cost per luxury item: ${luxury_cost_per_unit:.2f}
-- Annual interest rate (APR): {interest_rate * 100:.2f}% (~{(interest_rate/12) * 100:.2f}% monthly)
+ECONOMIC SITUATION (Period {self.period + 1}):
+Financial Position:
+- Available savings for spending: ${self.savings:.2f}
+- This period's net income: ${self.income - self.fixed_cost - self.actual_variable_cost:.2f}
+  (Income ${self.income:.2f} - Fixed costs ${self.fixed_cost:.2f} - Variable costs ${self.actual_variable_cost:.2f})
 
-Constraints:
-- Choose a non-negative integer number of items.
-- Do not spend more than current savings (no borrowing).
-- If you cannot afford at least 1 item, answer 0.
+{financial_status}
 
-Heuristics (optional guidance):
-- Higher interest rate -> favor saving more; lower rate -> slightly more willing to spend.
-- Lower savings -> be conservative.
+Investment Opportunity:
+- Luxury goods cost: ${luxury_cost_per_unit:.2f} per unit
+- Maximum you can afford: {max_affordable} units
+- Monthly interest rate: {monthly_interest_rate*100:.3f}% (Annual: {interest_rate*100:.2f}%)
+- If you save instead: ${self.savings:.2f} grows to ${potential_savings_growth:.2f} next period
 
-Answer format:
-- Output only a single integer with no words or punctuation (e.g., 0, 1, 2).
-"""
+RATIONAL DECISION FRAMEWORK:
+You must choose how many luxury units to purchase (0 to {max_affordable}) by considering:
+
+1. UTILITY MAXIMIZATION: Each luxury unit provides immediate satisfaction
+2. RISK MANAGEMENT: Maintaining savings provides security against:
+   - Future income volatility (variable costs range ${0:.0f}-${self.variable_cost:.2f})
+   - Unexpected expenses or economic downturns
+   - Building recommended emergency fund (3+ months expenses)
+
+3. OPPORTUNITY COST: Money spent on luxury cannot earn {monthly_interest_rate*100:.3f}% monthly interest
+
+4. AGENT PROFILE CONSIDERATIONS:
+   - {self.agent_type} households typically prioritize {'financial stability and family security' if self.agent_type == 'family' else 'building long-term wealth while enjoying some current consumption' if self.agent_type == 'young_professional' else 'preserving retirement savings and conservative spending' if self.agent_type == 'retiree' else 'minimizing expenses while building emergency funds' if self.agent_type == 'student' else 'essential expenses first, very cautious luxury spending' if self.agent_type == 'low_income' else 'moderate spending with financial security'}
+
+FINANCIAL CONSTRAINT AWARENESS:
+- Even if you cannot afford luxury now, this experience teaches you about financial planning
+- Consider how your current financial constraints might influence future earning/saving strategies
+- Recognize the value of delayed gratification when resources are limited
+
+DECISION RULE:
+As a rational agent, purchase luxury goods only when the immediate utility exceeds the combined value of:
+- Interest earnings foregone
+- Risk reduction from maintaining savings buffer
+- Future consumption opportunities
+
+Choose the optimal number of luxury units (0-{max_affordable}) that maximizes your expected utility while maintaining appropriate financial security for your profile.
+
+ANSWER: [Single integer only, no explanation]"""
         
         return prompt
     
@@ -230,17 +311,17 @@ Answer format:
         interest_rate: float
     ) -> List[Dict[str, Any]]:
         """
-        Process a complete period for this agent.
+        Process a complete period for this agent following rational economic sequence:
         
-        This includes:
-        1. Calculating net income
-        2. Adding to savings
-        3. Deciding on luxury purchases
-        4. Applying interest to remaining savings
+        1. Receive income and pay mandatory expenses (fixed + variable costs)
+        2. Calculate available savings for discretionary spending
+        3. Make rational luxury purchase decision via LLM
+        4. Execute purchase if affordable
+        5. Apply interest to remaining savings
         
         Args:
             luxury_cost_per_unit: Cost per unit of luxury goods
-            interest_rate: Interest rate per period
+            interest_rate: Annual interest rate
             
         Returns:
             List of transaction records for this period
@@ -248,13 +329,25 @@ Answer format:
         transactions = []
         period_start_savings = self.savings
         
-        # Step 1: Calculate net income and costs
+        self.logger.info(
+            f"Agent {self.agent_id} ({self.agent_type}) starting period {self.period + 1} "
+            f"with ${period_start_savings:.2f} savings"
+        )
+        
+        # STEP 1: INCOME & MANDATORY EXPENSES
+        # Calculate and pay mandatory costs (fixed + random variable)
         net_income, actual_variable_cost = self.calculate_net_income()
         
-        # Step 2: Add net income to savings
+        # Update savings with net income (after mandatory expenses)
         self.savings += net_income
         
-        # Record fixed cost transaction
+        self.logger.info(
+            f"Period {self.period + 1}: Net income ${net_income:.2f} "
+            f"(Income ${self.income:.2f} - Fixed ${self.fixed_cost:.2f} - Variable ${actual_variable_cost:.2f}). "
+            f"Available for discretionary spending: ${self.savings:.2f}"
+        )
+        
+        # Record mandatory expense transactions
         transactions.append({
             'period_num': self.period,
             'agent_id': self.agent_id,
@@ -265,7 +358,6 @@ Answer format:
             'amount': self.fixed_cost
         })
         
-        # Record variable cost transaction
         transactions.append({
             'period_num': self.period,
             'agent_id': self.agent_id,
@@ -276,15 +368,16 @@ Answer format:
             'amount': self.actual_variable_cost
         })
         
-        # Step 3: Decide on luxury purchases
+        # STEP 2: RATIONAL LUXURY CONSUMPTION DECISION
+        # Agent makes optimal decision based on current savings, opportunity cost, and risk preferences
         luxury_units = self.decide_luxury_purchases(luxury_cost_per_unit, interest_rate)
         
-        # Check if agent can afford luxury purchases
+        # STEP 3: EXECUTE PURCHASE (if affordable and rational)
         total_luxury_cost = luxury_units * luxury_cost_per_unit
-        if total_luxury_cost <= self.savings:
-            self.savings -= total_luxury_cost
-            
-            if luxury_units > 0:
+        if luxury_units > 0:
+            if total_luxury_cost <= self.savings:
+                self.savings -= total_luxury_cost
+                
                 transactions.append({
                     'period_num': self.period,
                     'agent_id': self.agent_id,
@@ -296,26 +389,31 @@ Answer format:
                 })
                 
                 self.logger.info(
-                    f"Agent {self.agent_id} purchased {luxury_units} luxury units "
-                    f"for ${total_luxury_cost:.2f}"
+                    f"Agent {self.agent_id} rationally purchased {luxury_units} luxury units "
+                    f"for ${total_luxury_cost:.2f}. Remaining savings: ${self.savings:.2f}"
                 )
-        else:
-            self.logger.warning(
-                f"Agent {self.agent_id} cannot afford {luxury_units} luxury units "
-                f"(cost: ${total_luxury_cost:.2f}, savings: ${self.savings:.2f})"
-            )
+            else:
+                self.logger.warning(
+                    f"Agent {self.agent_id} attempted irrational purchase: {luxury_units} units "
+                    f"(cost: ${total_luxury_cost:.2f} > savings: ${self.savings:.2f}). Purchase denied."
+                )
+                # Override irrational decision
+                luxury_units = 0
         
-        # Step 4: Apply interest (deannualize) to remaining savings
-        interest_earned = self.savings * (interest_rate / 12)
+        # STEP 4: APPLY INTEREST TO REMAINING SAVINGS
+        # Savings grow at the risk-free rate (opportunity cost of consumption)
+        monthly_interest_rate = interest_rate / 12
+        interest_earned = self.savings * monthly_interest_rate
         self.savings += interest_earned
         
         self.logger.info(
-            f"Period {self.period}: Agent {self.agent_id} "
-            f"savings: ${period_start_savings:.2f} -> ${self.savings:.2f} "
-            f"(interest: ${interest_earned:.2f})"
+            f"Period {self.period + 1} complete for Agent {self.agent_id}: "
+            f"Savings ${period_start_savings:.2f} -> ${self.savings:.2f} "
+            f"(Net income: ${net_income:.2f}, Luxury spending: ${total_luxury_cost:.2f}, "
+            f"Interest earned: ${interest_earned:.2f})"
         )
         
-        # Increment period counter
+        # Advance to next period
         self.period += 1
         
         return transactions
