@@ -59,29 +59,166 @@ class TestAgent(unittest.TestCase):
             assert net_income == expected_net
             assert variable_cost == 400.0
     
-    def test_parse_luxury_response_valid(self):
-        """Test parsing valid luxury response."""
-        response = "I would like to buy 3 luxury units."
-        result = self.agent._parse_luxury_response(response)
+    def test_parse_luxury_response_with_validation_valid(self):
+        """Test parsing valid luxury response with new validation method."""
+        # Valid clean number
+        result, success = self.agent._parse_luxury_response_with_validation("3", 5)
         assert result == 3
-    
-    def test_parse_luxury_response_zero(self):
-        """Test parsing response with zero."""
-        response = "I don't want to buy any luxury items. 0"
-        result = self.agent._parse_luxury_response(response)
+        assert success == True
+        
+        # Valid zero
+        result, success = self.agent._parse_luxury_response_with_validation("0", 5)
         assert result == 0
-    
-    def test_parse_luxury_response_no_number(self):
-        """Test parsing response with no numbers."""
-        response = "I'm not sure what to buy."
-        result = self.agent._parse_luxury_response(response)
+        assert success == True
+        
+        # Valid number at max affordable
+        result, success = self.agent._parse_luxury_response_with_validation("5", 5)
+        assert result == 5
+        assert success == True
+
+    def test_parse_luxury_response_with_validation_invalid(self):
+        """Test parsing invalid responses that should trigger reprompt."""
+        # Text with number should fail (strict parsing)
+        result, success = self.agent._parse_luxury_response_with_validation("I want 3 items", 5)
         assert result == 0
-    
-    def test_parse_luxury_response_negative(self):
-        """Test parsing response with negative number (should return 0)."""
-        response = "I want to return -2 items."
-        result = self.agent._parse_luxury_response(response)
-        assert result == 0  # Negative numbers should be converted to 0
+        assert success == False
+        
+        # Number with punctuation should fail
+        result, success = self.agent._parse_luxury_response_with_validation("3.", 5)
+        assert result == 0
+        assert success == False
+        
+        # Number too high should fail
+        result, success = self.agent._parse_luxury_response_with_validation("10", 5)
+        assert result == 0
+        assert success == False
+        
+        # Negative number should fail
+        result, success = self.agent._parse_luxury_response_with_validation("-1", 5)
+        assert result == 0
+        assert success == False
+        
+        # Empty response should fail
+        result, success = self.agent._parse_luxury_response_with_validation("", 5)
+        assert result == 0
+        assert success == False
+        
+        # Non-numeric text should fail
+        result, success = self.agent._parse_luxury_response_with_validation("hello", 5)
+        assert result == 0
+        assert success == False
+
+    def test_create_simplified_prompt(self):
+        """Test simplified prompt creation for retries."""
+        self.agent.savings = 200.0
+        
+        # First retry prompt
+        prompt1 = self.agent._create_simplified_prompt(50.0, 4, 1)
+        assert "RETRY" in prompt1
+        assert "0 to 4" in prompt1
+        assert "Examples of correct responses" in prompt1
+        
+        # Second retry prompt (ultra-minimal)
+        prompt2 = self.agent._create_simplified_prompt(50.0, 4, 2)
+        assert len(prompt2) < len(prompt1)  # Should be shorter
+        assert "0 to 4" in prompt2
+
+    @patch('src.agent.requests')
+    def test_decide_luxury_purchases_retry_logic_success(self, mock_requests):
+        """Test retry logic when first response is unparseable."""
+        self.agent.savings = 200.0
+        
+        # Mock responses: first bad, second good
+        mock_response1 = Mock()
+        mock_response1.json.return_value = {"response": "I want to buy some items"}  # Unparseable
+        mock_response1.raise_for_status.return_value = None
+        
+        mock_response2 = Mock()
+        mock_response2.json.return_value = {"response": "2"}  # Clean number
+        mock_response2.raise_for_status.return_value = None
+        
+        mock_requests.post.side_effect = [mock_response1, mock_response2]
+        
+        result = self.agent.decide_luxury_purchases(50.0, 0.02)
+        
+        assert result == 2
+        assert len(self.agent.chat_history) == 1  # Only successful attempt logged
+        assert mock_requests.post.call_count == 2  # Two API calls made
+        # Check that it was a retry attempt (attempt 1 = second call)
+        assert "_retry_1" in self.agent.chat_history[0]['decision_type']
+        assert self.agent.chat_history[0]['attempt_number'] == 2
+
+    @patch('src.agent.requests')
+    def test_decide_luxury_purchases_all_retries_fail(self, mock_requests):
+        """Test when all retry attempts fail."""
+        self.agent.savings = 200.0
+        
+        # Mock all responses as unparseable
+        mock_response = Mock()
+        mock_response.json.return_value = {"response": "I cannot decide"}
+        mock_response.raise_for_status.return_value = None
+        mock_requests.post.return_value = mock_response
+        
+        with self.assertRaises(RuntimeError) as context:
+            self.agent.decide_luxury_purchases(50.0, 0.02)
+        
+        assert "Failed to get valid LLM response after 3 attempts" in str(context.exception)
+        assert mock_requests.post.call_count == 3  # Three attempts made
+        assert len(self.agent.chat_history) == 1  # Error logged
+
+    @patch('src.agent.requests')
+    def test_decide_luxury_purchases_api_error_with_retries(self, mock_requests):
+        """Test API errors with retry logic."""
+        self.agent.savings = 200.0
+        
+        # Mock API errors for all attempts
+        mock_requests.post.side_effect = Exception("Connection error")
+        
+        with self.assertRaises(RuntimeError) as context:
+            self.agent.decide_luxury_purchases(50.0, 0.02)
+        
+        assert "Failed to get valid LLM response after 3 attempts" in str(context.exception)
+        assert mock_requests.post.call_count == 3
+
+    @patch('src.agent.requests')
+    def test_decide_luxury_purchases_number_out_of_range(self, mock_requests):
+        """Test when LLM returns number outside valid range."""
+        self.agent.savings = 100.0  # Can afford 2 items at 50 each
+        
+        # Mock response with number too high
+        mock_response = Mock()
+        mock_response.json.return_value = {"response": "10"}  # Can only afford 2
+        mock_response.raise_for_status.return_value = None
+        mock_requests.post.return_value = mock_response
+        
+        with self.assertRaises(RuntimeError):
+            self.agent.decide_luxury_purchases(50.0, 0.02)
+        
+        # Should trigger retries because 10 > max_affordable (2)
+
+    @patch('src.agent.requests')
+    def test_decide_luxury_purchases_temperature_adjustment(self, mock_requests):
+        """Test that retry attempts use lower temperature."""
+        self.agent.savings = 200.0
+        self.agent.temperature = 0.7  # Initial temperature
+        
+        # Mock first response as unparseable, second as good
+        mock_response1 = Mock()
+        mock_response1.json.return_value = {"response": "I want some"}
+        mock_response1.raise_for_status.return_value = None
+        
+        mock_response2 = Mock()
+        mock_response2.json.return_value = {"response": "2"}
+        mock_response2.raise_for_status.return_value = None
+        
+        mock_requests.post.side_effect = [mock_response1, mock_response2]
+        
+        self.agent.decide_luxury_purchases(50.0, 0.02)
+        
+        # Check that retry used lower temperature
+        calls = mock_requests.post.call_args_list
+        assert calls[0][1]['json']['options']['temperature'] == 0.7  # First call uses agent's temperature
+        assert calls[1][1]['json']['options']['temperature'] == 0.1  # Retry uses lower temperature
     
     def test_create_luxury_prompt(self):
         """Test luxury prompt creation."""
@@ -98,9 +235,9 @@ class TestAgent(unittest.TestCase):
         # Set savings to positive amount so LLM call is made
         self.agent.savings = 200.0
         
-        # Mock the Ollama API response
+        # Mock the Ollama API response with clean number
         mock_response = Mock()
-        mock_response.json.return_value = {"response": "I want to buy 2 luxury units."}
+        mock_response.json.return_value = {"response": "2"}  # Clean number response
         mock_response.raise_for_status.return_value = None
         mock_requests.post.return_value = mock_response
         
@@ -108,8 +245,8 @@ class TestAgent(unittest.TestCase):
         
         assert result == 2
         assert len(self.agent.chat_history) == 1
-        assert self.agent.chat_history[0]['response'] == "I want to buy 2 luxury units."
-    
+        assert self.agent.chat_history[0]['response'] == "2"
+
     @patch('src.agent.requests')
     def test_decide_luxury_purchases_api_error(self, mock_requests):
         """Test luxury purchase decision with API error."""
@@ -119,11 +256,11 @@ class TestAgent(unittest.TestCase):
         # Mock the Ollama API to raise an exception
         mock_requests.post.side_effect = Exception("API Error")
         
-        result = self.agent.decide_luxury_purchases(50.0, 0.02)
+        # Should raise RuntimeError after retries
+        with self.assertRaises(RuntimeError) as context:
+            self.agent.decide_luxury_purchases(50.0, 0.02)
         
-        assert result == 0  # Should return 0 on error
-        assert len(self.agent.chat_history) == 1
-        assert "ERROR" in self.agent.chat_history[0]['response']
+        assert "Failed to get valid LLM response" in str(context.exception)
     
     def test_process_period_complete(self):
         """Test complete period processing."""
@@ -222,6 +359,72 @@ class TestAgent(unittest.TestCase):
         assert history[0]['period'] == 0
         # Ensure it's a copy, not the original
         assert history is not self.agent.chat_history
+
+
+class TestAgentEconomicDecisions(unittest.TestCase):
+    """Test economic decision-making scenarios."""
+    
+    def setUp(self):
+        """Set up test agents for economic scenarios."""
+        self.young_professional = Agent(
+            agent_id=10,
+            agent_type="young_professional",
+            income=4800.0,
+            fixed_cost=1200.0,
+            variable_cost=600.0
+        )
+        
+        self.low_income = Agent(
+            agent_id=11,
+            agent_type="low_income",
+            income=1800.0,
+            fixed_cost=1000.0,
+            variable_cost=500.0
+        )
+    
+    def test_financial_constraint_scenarios(self):
+        """Test various financial constraint scenarios."""
+        # Test agent with negative savings
+        self.young_professional.savings = -100.0
+        max_affordable = max(0, int(self.young_professional.savings // 50.0))
+        assert max_affordable == 0
+        
+        # Test agent with just enough for one item
+        self.young_professional.savings = 50.0
+        max_affordable = max(0, int(self.young_professional.savings // 50.0))
+        assert max_affordable == 1
+        
+        # Test agent with good savings
+        self.young_professional.savings = 500.0
+        max_affordable = max(0, int(self.young_professional.savings // 50.0))
+        assert max_affordable == 10
+    
+    def test_prompt_financial_status_messages(self):
+        """Test that prompts contain appropriate financial status messages."""
+        # Test constrained scenario
+        self.low_income.savings = 25.0  # Less than luxury cost
+        self.low_income.actual_variable_cost = 250.0
+        prompt = self.low_income._create_luxury_prompt(50.0, 0.04)
+        assert "BUDGET CONSTRAINT" in prompt or "FINANCIAL STRESS" in prompt
+        
+        # Test comfortable scenario
+        self.young_professional.savings = 1000.0
+        self.young_professional.actual_variable_cost = 300.0
+        prompt = self.young_professional._create_luxury_prompt(50.0, 0.04)
+        assert "FINANCIAL FLEXIBILITY" in prompt
+    
+    def test_economic_metrics_in_prompt(self):
+        """Test that economic metrics are correctly calculated in prompts."""
+        self.young_professional.savings = 500.0
+        self.young_professional.actual_variable_cost = 300.0
+        
+        prompt = self.young_professional._create_luxury_prompt(100.0, 0.06)
+        
+        # Check for key economic information
+        assert "500.00" in prompt  # Savings amount
+        assert "100.00" in prompt  # Luxury cost
+        assert "0.500%" in prompt  # Monthly interest rate (6%/12)
+        assert "5 units" in prompt  # Max affordable (500/100)
 
 
 class TestAgentEdgeCases(unittest.TestCase):

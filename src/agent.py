@@ -18,7 +18,7 @@ The simulation follows a coherent economic sequence each period:
 
 import random
 import logging
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Tuple
 import requests
 
 
@@ -111,6 +111,9 @@ class Agent:
         The LLM is always consulted to maintain complete economic information,
         even when financially constrained, to enable learning and realistic modeling.
         
+        If the initial response cannot be parsed, retry with a simplified prompt
+        to ensure data integrity without fallback values.
+        
         Args:
             luxury_cost_per_unit: Cost per unit of luxury goods
             interest_rate: Annual interest rate (opportunity cost)
@@ -118,73 +121,99 @@ class Agent:
         Returns:
             Number of luxury units to purchase (optimal choice)
         """
-        # Always create rational economic decision prompt (even if constrained)
-        prompt = self._create_luxury_prompt(luxury_cost_per_unit, interest_rate)
+        max_affordable = max(0, int(self.savings // luxury_cost_per_unit)) if luxury_cost_per_unit > 0 else 0
+        max_retries = 3
         
-        try:
-            # Call Ollama API for rational decision-making
-            response = requests.post(
-                "http://localhost:11434/api/generate",
-                json={
-                    "model": self.model_name,
-                    "prompt": prompt,
-                    "options": {
-                        "temperature": self.temperature,
-                        "num_predict": self.max_tokens
+        for attempt in range(max_retries):
+            try:
+                # Choose prompt type based on attempt number
+                if attempt == 0:
+                    # First attempt: Full economic analysis prompt
+                    prompt = self._create_luxury_prompt(luxury_cost_per_unit, interest_rate)
+                    prompt_type = "full_economic_analysis"
+                else:
+                    # Retry attempts: Simplified numeric-only prompt
+                    prompt = self._create_simplified_prompt(luxury_cost_per_unit, max_affordable, attempt)
+                    prompt_type = f"simplified_retry_{attempt}"
+                
+                # Call Ollama API for rational decision-making
+                response = requests.post(
+                    "http://localhost:11434/api/generate",
+                    json={
+                        "model": self.model_name,
+                        "prompt": prompt,
+                        "options": {
+                            "temperature": 0.1 if attempt > 0 else self.temperature,  # Lower temperature for retries
+                            "num_predict": 50 if attempt > 0 else self.max_tokens  # Shorter responses for retries
+                        },
+                        "stream": False
                     },
-                    "stream": False
-                },
-                timeout=30
-            )
-            response.raise_for_status()
-            data = response.json()
-            response_text = data.get("response", "")
-            
-            # Determine if this was a constrained or unconstrained decision
-            can_afford_any = self.savings >= luxury_cost_per_unit
-            decision_type = "llm_rational_choice" if can_afford_any else "llm_constrained_choice"
-            
-            # Log the rational decision interaction
-            interaction = {
-                "period": self.period,
-                "prompt": prompt,
-                "response": response_text,
-                "timestamp": str(self.period),
-                "decision_type": decision_type,
-                "financially_constrained": not can_afford_any
-            }
-            self.chat_history.append(interaction)
-            
-            # Parse and validate the economic decision
-            luxury_quantity = self._parse_luxury_response(response_text)
-            
-            # Economic validation: Ensure decision doesn't exceed budget
-            max_affordable = max(0, int(self.savings // luxury_cost_per_unit)) if luxury_cost_per_unit > 0 else 0
-            if luxury_quantity > max_affordable:
-                original_quantity = luxury_quantity
-                luxury_quantity = max_affordable
-                self.logger.info(
-                    f"Agent {self.agent_id} chose {original_quantity} units but constrained to "
-                    f"affordable maximum {max_affordable} (savings: ${self.savings:.2f})"
+                    timeout=30
                 )
-                # Add constraint enforcement to chat history
-                interaction["constraint_applied"] = f"Reduced from {original_quantity} to {max_affordable} (budget limit)"
-            
-            return luxury_quantity
-            
-        except Exception as e:
-            self.logger.error(f"Error in LLM economic decision: {e}")
-            # Log the failed decision with fallback
-            self.chat_history.append({
-                "period": self.period,
-                "prompt": prompt,
-                "response": f"ERROR: {str(e)}",
-                "fallback_decision": "0",
-                "timestamp": str(self.period),
-                "decision_type": "error_fallback"
-            })
-            # Conservative fallback: no luxury purchases during errors
-            return 0
+                response.raise_for_status()
+                data = response.json()
+                response_text = data.get("response", "")
+                
+                # Try to parse the response
+                luxury_quantity, parse_success = self._parse_luxury_response_with_validation(response_text, max_affordable)
+                
+                if parse_success:
+                    # Successful parse - log and return result
+                    can_afford_any = self.savings >= luxury_cost_per_unit
+                    decision_type = "llm_rational_choice" if can_afford_any else "llm_constrained_choice"
+                    if attempt > 0:
+                        decision_type += f"_retry_{attempt}"
+                    
+                    interaction = {
+                        "period": self.period,
+                        "prompt": prompt,
+                        "response": response_text,
+                        "parsed_quantity": luxury_quantity,
+                        "timestamp": str(self.period),
+                        "decision_type": decision_type,
+                        "prompt_type": prompt_type,
+                        "attempt_number": attempt + 1,
+                        "financially_constrained": not can_afford_any
+                    }
+                    self.chat_history.append(interaction)
+                    
+                    # Apply budget constraint if necessary
+                    if luxury_quantity > max_affordable:
+                        original_quantity = luxury_quantity
+                        luxury_quantity = max_affordable
+                        self.logger.info(
+                            f"Agent {self.agent_id} chose {original_quantity} units but constrained to "
+                            f"affordable maximum {max_affordable} (savings: ${self.savings:.2f})"
+                        )
+                        interaction["constraint_applied"] = f"Reduced from {original_quantity} to {max_affordable} (budget limit)"
+                    
+                    return luxury_quantity
+                else:
+                    # Parse failed - log and retry
+                    self.logger.warning(f"Attempt {attempt + 1}: Could not parse LLM response: '{response_text}'")
+                    if attempt < max_retries - 1:
+                        self.logger.info(f"Retrying with simplified prompt...")
+                    
+            except Exception as e:
+                self.logger.error(f"Attempt {attempt + 1}: Error in LLM call: {e}")
+                if attempt < max_retries - 1:
+                    self.logger.info(f"Retrying after error...")
+                
+        # If all retries failed, this is a critical error - raise exception to halt simulation
+        error_msg = f"Agent {self.agent_id}: Failed to get valid LLM response after {max_retries} attempts"
+        self.logger.error(error_msg)
+        
+        # Log the complete failure
+        self.chat_history.append({
+            "period": self.period,
+            "error": error_msg,
+            "timestamp": str(self.period),
+            "decision_type": "critical_failure",
+            "attempts_made": max_retries
+        })
+        
+        # Raise exception to halt simulation and preserve data integrity
+        raise RuntimeError(error_msg)
     
     def _create_luxury_prompt(self, luxury_cost_per_unit: float, interest_rate: float) -> str:
         """
@@ -273,37 +302,72 @@ As a rational agent, purchase luxury goods only when the immediate utility excee
 
 Choose the optimal number of luxury units (0-{max_affordable}) that maximizes your expected utility while maintaining appropriate financial security for your profile.
 
-ANSWER: [Single integer only, no explanation]"""
+CRITICAL: Your response must contain ONLY a single number from 0 to {max_affordable}. Do not include any words, explanations, punctuation, or formatting. Examples of correct responses: 0, 1, 2, 3. Examples of incorrect responses: "I choose 2", "0 units", "2.", "The answer is 2".
+
+Your decision:"""
         
         return prompt
     
-    def _parse_luxury_response(self, response_text: str) -> int:
+    def _create_simplified_prompt(self, luxury_cost_per_unit: float, max_affordable: int, attempt: int) -> str:
         """
-        Parse the LLM response to extract number of luxury units.
+        Create a simplified prompt for retry attempts when the main prompt fails.
+        
+        Args:
+            luxury_cost_per_unit: Cost per unit of luxury goods
+            max_affordable: Maximum number of units the agent can afford
+            attempt: Retry attempt number (1, 2, etc.)
+            
+        Returns:
+            Simplified prompt focused only on getting a number
+        """
+        if attempt == 1:
+            # First retry: Clear and direct
+            return f"""RETRY: You must respond with ONLY a number.
+
+Available savings: ${self.savings:.2f}
+Item cost: ${luxury_cost_per_unit:.2f}
+Maximum affordable: {max_affordable}
+
+How many items to buy? Enter only a number from 0 to {max_affordable}.
+
+Examples of correct responses: 0, 1, 2, 3
+Examples of incorrect responses: "I choose 2", "0 items", "two"
+
+Answer:"""
+
+        else:
+            # Second retry: Ultra-minimal
+            return f"""Enter a number from 0 to {max_affordable}:"""
+    
+    def _parse_luxury_response_with_validation(self, response_text: str, max_affordable: int) -> Tuple[int, bool]:
+        """
+        Parse LLM response with strict validation - only accept clean numbers.
         
         Args:
             response_text: Raw response from LLM
+            max_affordable: Maximum affordable quantity for validation
             
         Returns:
-            Number of luxury units (non-negative integer)
+            Tuple of (quantity, success_flag)
         """
-        try:
-            # Extract first number from response (including negative numbers)
-            import re
-            # Look for numbers (including negative ones)
-            numbers = re.findall(r'-?\d+', response_text)
+        if not response_text:
+            return 0, False
             
-            if numbers:
-                luxury_units = int(numbers[0])
-                # Ensure non-negative
-                return max(0, luxury_units)
+        # Clean the response - remove whitespace only
+        cleaned_response = response_text.strip()
+        
+        # Strict validation: must be a pure number with no other text
+        if cleaned_response.isdigit():
+            quantity = int(cleaned_response)
+            # Ensure it's within valid range
+            if 0 <= quantity <= max_affordable:
+                return quantity, True
             else:
-                self.logger.warning(f"No number found in response: {response_text}")
-                return 0
-                
-        except (ValueError, IndexError) as e:
-            self.logger.warning(f"Could not parse response '{response_text}': {e}")
-            return 0
+                # Number is outside valid range - reprompt
+                return 0, False
+        
+        # Any response that isn't a pure number should trigger a reprompt
+        return 0, False
     
     def process_period(
         self, 
