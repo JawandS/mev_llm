@@ -72,3 +72,10 @@ Results are saved to `results/[timestamp]/` containing:
 - `transactions.csv`: All transaction data
 - `chat_log/`: Agent LLM interaction logs
 - `config/`: Copy of configuration used
+
+## Next STeps
+- Add inflation to prices over time
+- Add an inflation statistic to share with agents
+- Break fixed / random costs into specific areas with varying inflation
+- Create agents that determine the price of goods 
+- Break luxury goods into additional categories
