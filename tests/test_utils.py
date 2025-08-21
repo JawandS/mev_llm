@@ -44,7 +44,7 @@ class TestConfigLoading:
         """Test loading valid configuration."""
         config_data = {
             "simulation": {"periods": 52, "agents_per_type": 5},
-            "economics": {"interest_rate": 0.00, "luxury_cost_per_unit": 12.00},
+            "economics": {"interest_rate": 0.04, "luxury_cost_per_unit": 12.00},
             "llm": {"model_name": "gemini-2.0-flash-exp", "temperature": 0.7, "max_tokens": 1000}
         }
         

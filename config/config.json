@@ -1,11 +1,11 @@
 {
   "simulation": {
-    "periods": 12,
+    "periods": 52,
     "agents_per_type": 1
   },
   "economics": {
     "interest_rate": 0.04,
-    "luxury_cost_per_unit": 50.0
+    "luxury_cost_per_unit": 12.00
   },
   "llm": {
     "model_name": "qwen2.5:0.5b",

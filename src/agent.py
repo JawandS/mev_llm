@@ -54,9 +54,9 @@ class Agent:
         Args:
             agent_id: Unique identifier for this agent
             agent_type: Type of agent (e.g., 'young_professional', 'family')
-            income: Monthly income
-            fixed_cost: Fixed monthly expenses
-            variable_cost: Maximum variable monthly expenses
+            income: Weekly income
+            fixed_cost: Fixed weekly expenses
+            variable_cost: Maximum variable weekly expenses
             model_name: Name of the LLM model to use
             temperature: LLM temperature for response variability
             max_tokens: Maximum tokens for LLM responses
@@ -228,9 +228,10 @@ class Agent:
         """
         # Calculate key economic metrics for decision-making
         max_affordable = max(0, int(self.savings // luxury_cost_per_unit)) if luxury_cost_per_unit > 0 else 0
-        monthly_interest_rate = interest_rate / 12
+        monthly_interest_rate = interest_rate / 12  # Convert annual to monthly rate
         
-        # Calculate what savings would be worth next period if saved
+        # Calculate what savings would be worth after next monthly interest payment
+        # Interest is applied every 4 periods (monthly)
         potential_savings_growth = self.savings * (1 + monthly_interest_rate)
         
         # Calculate expected net income for risk assessment
@@ -253,11 +254,11 @@ class Agent:
         
         # Add savings buffer analysis
         if self.savings > 0:
-            months_of_coverage = self.savings / (self.fixed_cost + expected_variable_cost)
-            if months_of_coverage < 1:
-                financial_status += f"\n⚠️  RISK WARNING: Current savings only cover {months_of_coverage:.1f} months of expenses."
-            elif months_of_coverage < 3:
-                financial_status += f"\n⚠️  LOW BUFFER: Current savings cover {months_of_coverage:.1f} months of expenses (recommended: 3+ months)."
+            weeks_of_coverage = self.savings / (self.fixed_cost + expected_variable_cost)
+            if weeks_of_coverage < 2:
+                financial_status += f"\n⚠️  RISK WARNING: Current savings only cover {weeks_of_coverage:.1f} weeks of expenses."
+            elif weeks_of_coverage < 12:
+                financial_status += f"\n⚠️  LOW BUFFER: Current savings cover {weeks_of_coverage:.1f} weeks of expenses (recommended: 12+ weeks)."
         
         prompt = f"""You are a rational economic agent managing household finances for a '{self.agent_type}' profile. Your goal is to maximize utility by balancing immediate luxury consumption against future financial security.
 
@@ -273,7 +274,7 @@ Investment Opportunity:
 - Luxury goods cost: ${luxury_cost_per_unit:.2f} per unit
 - Maximum you can afford: {max_affordable} units
 - Monthly interest rate: {monthly_interest_rate*100:.3f}% (Annual: {interest_rate*100:.2f}%)
-- If you save instead: ${self.savings:.2f} grows to ${potential_savings_growth:.2f} next period
+- If you save instead: ${self.savings:.2f} grows to ${potential_savings_growth:.2f} at next monthly interest payment
 
 RATIONAL DECISION FRAMEWORK:
 You must choose how many luxury units to purchase (0 to {max_affordable}) by considering:
@@ -282,7 +283,7 @@ You must choose how many luxury units to purchase (0 to {max_affordable}) by con
 2. RISK MANAGEMENT: Maintaining savings provides security against:
    - Future income volatility (variable costs range ${0:.0f}-${self.variable_cost:.2f})
    - Unexpected expenses or economic downturns
-   - Building recommended emergency fund (3+ months expenses)
+   - Building recommended emergency fund (12+ weeks expenses)
 
 3. OPPORTUNITY COST: Money spent on luxury cannot earn {monthly_interest_rate*100:.3f}% monthly interest
 
@@ -372,7 +373,8 @@ Answer:"""
     def process_period(
         self, 
         luxury_cost_per_unit: float, 
-        interest_rate: float
+        interest_rate: float,
+        current_period: int = 0
     ) -> List[Dict[str, Any]]:
         """
         Process a complete period for this agent following rational economic sequence:
@@ -381,11 +383,12 @@ Answer:"""
         2. Calculate available savings for discretionary spending
         3. Make rational luxury purchase decision via LLM
         4. Execute purchase if affordable
-        5. Apply interest to remaining savings
+        5. Apply interest to remaining savings/debt (monthly, every 4 periods)
         
         Args:
             luxury_cost_per_unit: Cost per unit of luxury goods
             interest_rate: Annual interest rate
+            current_period: Current simulation period (0-indexed)
             
         Returns:
             List of transaction records for this period
@@ -464,17 +467,25 @@ Answer:"""
                 # Override irrational decision
                 luxury_units = 0
         
-        # STEP 4: APPLY INTEREST TO REMAINING SAVINGS
-        # Savings grow at the risk-free rate (opportunity cost of consumption)
-        monthly_interest_rate = interest_rate / 12
-        interest_earned = self.savings * monthly_interest_rate
-        self.savings += interest_earned
+        # STEP 4: APPLY INTEREST TO REMAINING SAVINGS/DEBT (MONTHLY)
+        # Interest is applied every 4 periods (monthly) to both savings and debt
+        interest_earned = 0.0
+        if (current_period + 1) % 4 == 0:  # Apply interest monthly (every 4 weeks)
+            monthly_interest_rate = interest_rate / 12  # Convert annual to monthly rate
+            interest_earned = self.savings * monthly_interest_rate
+            self.savings += interest_earned
+            
+            interest_type = "earned" if interest_earned >= 0 else "charged"
+            self.logger.debug(
+                f"Monthly interest {interest_type}: ${abs(interest_earned):.2f} "
+                f"(Rate: {monthly_interest_rate*100:.3f}% monthly)"
+            )
         
         self.logger.info(
             f"Period {self.period + 1} complete for Agent {self.agent_id}: "
             f"Savings ${period_start_savings:.2f} -> ${self.savings:.2f} "
             f"(Net income: ${net_income:.2f}, Luxury spending: ${total_luxury_cost:.2f}, "
-            f"Interest earned: ${interest_earned:.2f})"
+            f"Interest {('earned' if interest_earned >= 0 else 'charged')}: ${abs(interest_earned):.2f})"
         )
         
         # Advance to next period

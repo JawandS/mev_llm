@@ -272,7 +272,7 @@ class TestAgent(unittest.TestCase):
             with patch.object(self.agent, 'decide_luxury_purchases') as mock_decide:
                 mock_decide.return_value = 2  # Buy 2 luxury units
                 
-                transactions = self.agent.process_period(12.00, 0.00)
+                transactions = self.agent.process_period(12.00, 0.04, 0)
                 
                 # Check transactions
                 assert len(transactions) == 3  # fixed, variable, luxury
@@ -319,7 +319,7 @@ class TestAgent(unittest.TestCase):
                 # Let's make them want to buy more than they can afford
                 mock_decide.return_value = 15  # Try to buy 15 units (750 cost) but only have 550 savings
                 
-                transactions = self.agent.process_period(50.0, 0.02)
+                transactions = self.agent.process_period(50.0, 0.02, 0)
                 
                 # Should only have fixed and variable cost transactions, no luxury
                 transaction_types = [t['purchase_type'] for t in transactions]
@@ -463,7 +463,7 @@ class TestAgentEdgeCases(unittest.TestCase):
             with patch.object(agent, 'decide_luxury_purchases') as mock_decide:
                 mock_decide.return_value = 10  # Try to buy many luxury items
                 
-                transactions = agent.process_period(100.0, 0.05)
+                transactions = agent.process_period(100.0, 0.05, 0)
                 
                 # Should be able to afford luxury despite negative income
                 luxury_transactions = [t for t in transactions if t['purchase_type'] == 'luxury']

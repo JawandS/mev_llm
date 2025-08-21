@@ -113,7 +113,8 @@ class Simulation:
             try:
                 agent_transactions = agent.process_period(
                     self.luxury_cost_per_unit,
-                    self.interest_rate
+                    self.interest_rate,
+                    period_num
                 )
                 period_transactions.extend(agent_transactions)
                 

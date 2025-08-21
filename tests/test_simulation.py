@@ -57,7 +57,7 @@ class TestSimulation(unittest.TestCase):
         # Verify initialization
         assert simulation.num_periods == 3
         assert simulation.agents_per_type == 2
-        assert simulation.interest_rate == 0.00
+        assert simulation.interest_rate == 0.04
         assert simulation.luxury_cost_per_unit == 12.00
         assert len(simulation.agents) == 0  # No agents created yet
         assert len(simulation.transactions) == 0
@@ -152,8 +152,8 @@ class TestSimulation(unittest.TestCase):
         simulation.run_period(0)
         
         # Verify agents processed period
-        mock_agent1.process_period.assert_called_once_with(12.00, 0.00)
-        mock_agent2.process_period.assert_called_once_with(12.00, 0.00)
+        mock_agent1.process_period.assert_called_once_with(12.00, 0.04, 0)
+        mock_agent2.process_period.assert_called_once_with(12.00, 0.04, 0)
         
         # Verify transactions collected
         assert len(simulation.transactions) == 2
@@ -348,7 +348,7 @@ class TestSimulation(unittest.TestCase):
         # Verify summary content
         assert summary['simulation_config']['periods'] == 3
         assert summary['simulation_config']['total_agents'] == 2
-        assert summary['simulation_config']['interest_rate'] == 0.00
+        assert summary['simulation_config']['interest_rate'] == 0.04
         
         assert summary['transaction_summary']['total_transactions'] == 3
         assert summary['transaction_summary']['luxury_transactions'] == 2
