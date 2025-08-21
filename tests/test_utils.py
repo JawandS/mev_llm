@@ -40,11 +40,18 @@ class TestLogging:
 class TestConfigLoading:
     """Test configuration loading functions."""
     
+    @classmethod
+    def setup_class(cls):
+        """Load actual configuration for testing."""
+        cls.actual_config = load_config()
+        cls.actual_agent_types = load_agent_types()
+    
     def test_load_config_valid(self):
         """Test loading valid configuration."""
+        # Use actual config values for testing
         config_data = {
-            "simulation": {"periods": 52, "agents_per_type": 5},
-            "economics": {"interest_rate": 0.04, "luxury_cost_per_unit": 12.00},
+            "simulation": {"periods": self.actual_config['simulation']['periods'], "agents_per_type": self.actual_config['simulation']['agents_per_type']},
+            "economics": {"interest_rate": self.actual_config['economics']['interest_rate'], "luxury_cost_per_unit": self.actual_config['economics']['luxury_cost_per_unit']},
             "llm": {"model_name": "gemini-2.0-flash-exp", "temperature": 0.7, "max_tokens": 1000}
         }
         
@@ -70,22 +77,24 @@ class TestConfigLoading:
     
     def test_load_agent_types_valid(self):
         """Test loading valid agent types."""
-        csv_data = "agent_type,income,fixed_cost,variable_cost\nyoung_professional,277.00,92.00,92.00\n"
+        # Get first row from actual data for testing
+        first_agent = self.actual_agent_types.iloc[0]
+        csv_data = f"agent_type,income,fixed_cost,variable_cost\n{first_agent['agent_type']},{first_agent['income']},{first_agent['fixed_cost']},{first_agent['variable_cost']}\n"
         
         with patch('src.utils.Path') as mock_path:
             mock_path.return_value.exists.return_value = True
             with patch('pandas.read_csv') as mock_read_csv:
                 mock_df = pd.DataFrame({
-                    'agent_type': ['young_professional'],
-                    'income': [277.00],
-                    'fixed_cost': [400.00],
-                    'variable_cost': [400.00]
+                    'agent_type': [first_agent['agent_type']],
+                    'income': [first_agent['income']],
+                    'fixed_cost': [first_agent['fixed_cost']],
+                    'variable_cost': [first_agent['variable_cost']]
                 })
                 mock_read_csv.return_value = mock_df
                 
                 result = load_agent_types()
                 assert len(result) == 1
-                assert result.iloc[0]['agent_type'] == 'young_professional'
+                assert result.iloc[0]['agent_type'] == first_agent['agent_type']
     
     def test_load_agent_types_missing_columns(self):
         """Test loading agent types with missing required columns."""
@@ -102,11 +111,16 @@ class TestConfigLoading:
 class TestConfigValidation:
     """Test configuration validation."""
     
+    @classmethod
+    def setup_class(cls):
+        """Load actual configuration for testing."""
+        cls.actual_config = load_config()
+    
     def test_validate_config_valid(self):
         """Test validation of valid configuration."""
         config = {
-            "simulation": {"periods": 52, "agents_per_type": 5},
-            "economics": {"interest_rate": 0.00, "luxury_cost_per_unit": 12.00},
+            "simulation": {"periods": self.actual_config['simulation']['periods'], "agents_per_type": self.actual_config['simulation']['agents_per_type']},
+            "economics": {"interest_rate": self.actual_config['economics']['interest_rate'], "luxury_cost_per_unit": self.actual_config['economics']['luxury_cost_per_unit']},
             "llm": {"model_name": "gemini-2.0-flash-exp", "temperature": 0.7, "max_tokens": 1000}
         }
         # Should not raise any exception
@@ -115,7 +129,7 @@ class TestConfigValidation:
     def test_validate_config_missing_section(self):
         """Test validation with missing section."""
         config = {
-            "simulation": {"periods": 12, "agents_per_type": 5},
+            "simulation": {"periods": self.actual_config['simulation']['periods'], "agents_per_type": self.actual_config['simulation']['agents_per_type']},
             # Missing economics and llm sections
         }
         with pytest.raises(ValueError, match="Missing configuration section"):
@@ -124,8 +138,8 @@ class TestConfigValidation:
     def test_validate_config_missing_key(self):
         """Test validation with missing key."""
         config = {
-            "simulation": {"periods": 52},  # Missing agents_per_type
-            "economics": {"interest_rate": 0.00, "luxury_cost_per_unit": 12.00},
+            "simulation": {"periods": self.actual_config['simulation']['periods']},  # Missing agents_per_type
+            "economics": {"interest_rate": self.actual_config['economics']['interest_rate'], "luxury_cost_per_unit": self.actual_config['economics']['luxury_cost_per_unit']},
             "llm": {"model_name": "gemini-2.0-flash-exp", "temperature": 0.7, "max_tokens": 1000}
         }
         with pytest.raises(ValueError, match="Missing configuration key"):
@@ -135,8 +149,8 @@ class TestConfigValidation:
         """Test validation with invalid values."""
         # Test negative periods
         config = {
-            "simulation": {"periods": -1, "agents_per_type": 5},
-            "economics": {"interest_rate": 0.00, "luxury_cost_per_unit": 12.00},
+            "simulation": {"periods": -1, "agents_per_type": self.actual_config['simulation']['agents_per_type']},
+            "economics": {"interest_rate": self.actual_config['economics']['interest_rate'], "luxury_cost_per_unit": self.actual_config['economics']['luxury_cost_per_unit']},
             "llm": {"model_name": "gemini-2.0-flash-exp", "temperature": 0.7, "max_tokens": 1000}
         }
         with pytest.raises(ValueError, match="periods must be positive"):

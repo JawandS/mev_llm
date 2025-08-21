@@ -15,6 +15,7 @@ import sys
 sys.path.append('../src')
 
 from src.simulation import Simulation
+from src.utils import load_config, load_agent_types
 
 
 class TestSimulation(unittest.TestCase):
@@ -22,20 +23,25 @@ class TestSimulation(unittest.TestCase):
     
     def setUp(self):
         """Set up test simulation instance with mocked dependencies."""
-        # Mock configuration data
+        # Load actual configuration for dynamic testing
+        self.config = load_config()
+        self.agent_types_df = load_agent_types()
+        
+        # Extract values from config for assertions
+        self.interest_rate = self.config['economics']['interest_rate']
+        self.luxury_cost = self.config['economics']['luxury_cost_per_unit']
+        self.periods = self.config['simulation']['periods']
+        self.agents_per_type = self.config['simulation']['agents_per_type']
+        
+        # Mock configuration data that mimics actual config structure
         self.mock_config = {
-            "simulation": {"periods": 3, "agents_per_type": 2},
-            "economics": {"interest_rate": 0.00, "luxury_cost_per_unit": 12.00},
+            "simulation": {"periods": self.periods, "agents_per_type": self.agents_per_type},
+            "economics": {"interest_rate": self.interest_rate, "luxury_cost_per_unit": self.luxury_cost},
             "llm": {"model_name": "gemini-2.0-flash-exp", "temperature": 0.7, "max_tokens": 1000}
         }
         
-        # Mock agent types DataFrame
-        self.mock_agent_types = pd.DataFrame({
-            'agent_type': ['young_professional', 'family'],
-            'income': [277.00, 416.00],
-            'fixed_cost': [92.00, 139.00],
-            'variable_cost': [92.00, 139.00]
-        })
+        # Mock agent types DataFrame using actual data
+        self.mock_agent_types = self.agent_types_df.copy()
     
     @patch('src.simulation.load_agent_types')
     @patch('src.simulation.load_config')
@@ -55,10 +61,10 @@ class TestSimulation(unittest.TestCase):
         simulation = Simulation()
         
         # Verify initialization
-        assert simulation.num_periods == 3
-        assert simulation.agents_per_type == 2
-        assert simulation.interest_rate == 0.04
-        assert simulation.luxury_cost_per_unit == 12.00
+        assert simulation.num_periods == self.periods
+        assert simulation.agents_per_type == self.agents_per_type
+        assert simulation.interest_rate == self.interest_rate
+        assert simulation.luxury_cost_per_unit == self.luxury_cost
         assert len(simulation.agents) == 0  # No agents created yet
         assert len(simulation.transactions) == 0
         assert simulation.current_period == 0
@@ -100,16 +106,22 @@ class TestSimulation(unittest.TestCase):
         simulation.create_agents()
         
         # Verify correct number of agents created
-        # 2 agent types × 2 agents per type = 4 total agents
-        assert len(simulation.agents) == 4
-        assert mock_agent_class.call_count == 4
+        # agent_types × agents_per_type = total agents
+        expected_total_agents = len(self.mock_agent_types) * self.agents_per_type
+        assert len(simulation.agents) == expected_total_agents
+        assert mock_agent_class.call_count == expected_total_agents
         
         # Verify agent creation parameters
         calls = mock_agent_class.call_args_list
-        assert calls[0][1]['agent_type'] == 'young_professional'
-        assert calls[1][1]['agent_type'] == 'young_professional'
-        assert calls[2][1]['agent_type'] == 'family'
-        assert calls[3][1]['agent_type'] == 'family'
+        
+        # Verify the correct agent types were created based on our actual config
+        created_agent_types = [call[1]['agent_type'] for call in calls]
+        expected_agent_types = []
+        for _, row in self.mock_agent_types.iterrows():
+            for _ in range(self.agents_per_type):
+                expected_agent_types.append(row['agent_type'])
+        
+        assert created_agent_types == expected_agent_types
         
         # Verify agent IDs are sequential
         assert calls[0][1]['agent_id'] == 0
@@ -152,8 +164,8 @@ class TestSimulation(unittest.TestCase):
         simulation.run_period(0)
         
         # Verify agents processed period
-        mock_agent1.process_period.assert_called_once_with(12.00, 0.04, 0)
-        mock_agent2.process_period.assert_called_once_with(12.00, 0.04, 0)
+        mock_agent1.process_period.assert_called_once_with(self.luxury_cost, self.interest_rate, 0)
+        mock_agent2.process_period.assert_called_once_with(self.luxury_cost, self.interest_rate, 0)
         
         # Verify transactions collected
         assert len(simulation.transactions) == 2
@@ -233,7 +245,7 @@ class TestSimulation(unittest.TestCase):
                     mock_create_agents.assert_called_once()
                     
                     # Verify run_period called for each period
-                    assert mock_run_period.call_count == 3  # 3 periods
+                    assert mock_run_period.call_count == self.periods
                     mock_run_period.assert_any_call(0)
                     mock_run_period.assert_any_call(1)
                     mock_run_period.assert_any_call(2)
@@ -346,9 +358,9 @@ class TestSimulation(unittest.TestCase):
         summary = simulation.get_simulation_summary()
         
         # Verify summary content
-        assert summary['simulation_config']['periods'] == 3
+        assert summary['simulation_config']['periods'] == self.periods
         assert summary['simulation_config']['total_agents'] == 2
-        assert summary['simulation_config']['interest_rate'] == 0.04
+        assert summary['simulation_config']['interest_rate'] == self.interest_rate
         
         assert summary['transaction_summary']['total_transactions'] == 3
         assert summary['transaction_summary']['luxury_transactions'] == 2

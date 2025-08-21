@@ -8,56 +8,78 @@ MEV LLM Economic Simulation.
 import unittest
 from unittest.mock import Mock, patch, MagicMock
 import sys
+import pandas as pd
 sys.path.append('../src')
 
 from src.agent import Agent
+from src.utils import load_config, load_agent_types
 
 
 class TestAgent(unittest.TestCase):
     """Test cases for the Agent class."""
+    
+    @classmethod
+    def setUpClass(cls):
+        """Set up class-level test configuration."""
+        # Load actual configuration values
+        cls.config = load_config()
+        cls.agent_types_df = load_agent_types()
+        
+        # Get young_professional data from config
+        young_prof_data = cls.agent_types_df[
+            cls.agent_types_df['agent_type'] == 'young_professional'
+        ].iloc[0]
+        cls.young_prof_income = young_prof_data['income']
+        cls.young_prof_fixed = young_prof_data['fixed_cost']
+        cls.young_prof_variable = young_prof_data['variable_cost']
+        
+        # Get economic parameters - config has nested structure
+        cls.interest_rate = cls.config['economics']['interest_rate']
+        cls.luxury_cost = cls.config['economics']['luxury_cost_per_unit']
     
     def setUp(self):
         """Set up test agent instance."""
         self.agent = Agent(
             agent_id=1,
             agent_type="young_professional",
-            income=277.00,
-            fixed_cost=92.00,
-            variable_cost=92.00
+            income=self.young_prof_income,
+            fixed_cost=self.young_prof_fixed,
+            variable_cost=self.young_prof_variable
         )
     
     def test_agent_initialization(self):
         """Test agent initialization."""
         assert self.agent.agent_id == 1
         assert self.agent.agent_type == "young_professional"
-        assert self.agent.income == 277.00
-        assert self.agent.fixed_cost == 92.00
-        assert self.agent.variable_cost == 92.00
+        assert self.agent.income == self.young_prof_income
+        assert self.agent.fixed_cost == self.young_prof_fixed
+        assert self.agent.variable_cost == self.young_prof_variable
         assert self.agent.savings == 0.00
         assert self.agent.period == 0
         assert len(self.agent.chat_history) == 0
     
     def test_calculate_net_income(self):
         """Test net income calculation."""
+        test_variable_cost = self.young_prof_variable / 2  # Use half of max variable cost
         with patch('random.uniform') as mock_random:
-            mock_random.return_value = 46.00  # Variable cost
+            mock_random.return_value = test_variable_cost
             
             net_income, variable_cost = self.agent.calculate_net_income()
             
-            expected_net = 277.00 - 92.00 - 46.00  # income - fixed - variable
+            expected_net = self.young_prof_income - self.young_prof_fixed - test_variable_cost
             assert net_income == expected_net
-            assert variable_cost == 46.00
+            assert variable_cost == test_variable_cost
     
     def test_calculate_net_income_negative(self):
         """Test net income calculation resulting in negative value."""
         with patch('random.uniform') as mock_random:
-            mock_random.return_value = 92.00  # Maximum variable cost
+            mock_random.return_value = self.young_prof_variable  # Maximum variable cost
             
             net_income, variable_cost = self.agent.calculate_net_income()
             
-            expected_net = 277.00 - 92.00 - 92.00  # = 93.00
+            expected_net = self.young_prof_income - self.young_prof_fixed - self.young_prof_variable
             assert net_income == expected_net
-            assert variable_cost == 92.00
+            assert variable_cost == self.young_prof_variable
     
     def test_parse_luxury_response_with_validation_valid(self):
         """Test parsing valid luxury response with new validation method."""
@@ -267,12 +289,12 @@ class TestAgent(unittest.TestCase):
         self.agent.savings = 1000.00
         
         with patch('random.uniform') as mock_random:
-            mock_random.return_value = 75.00  # Variable cost (within 92.00 range)
+            mock_random.return_value = self.young_prof_variable * 0.8  # 80% of max variable cost
             
             with patch.object(self.agent, 'decide_luxury_purchases') as mock_decide:
                 mock_decide.return_value = 2  # Buy 2 luxury units
                 
-                transactions = self.agent.process_period(12.00, 0.04, 0)
+                transactions = self.agent.process_period(self.luxury_cost, self.interest_rate, 0)
                 
                 # Check transactions
                 assert len(transactions) == 3  # fixed, variable, luxury
@@ -281,25 +303,26 @@ class TestAgent(unittest.TestCase):
                 fixed_tx = next(t for t in transactions if t['purchase_type'] == 'fixed_cost')
                 assert fixed_tx['agent_id'] == 1
                 assert fixed_tx['required'] == True
-                assert fixed_tx['amount'] == 92.00
+                assert fixed_tx['amount'] == self.young_prof_fixed
                 
                 # Check variable cost transaction
                 variable_tx = next(t for t in transactions if t['purchase_type'] == 'variable_cost')
                 assert variable_tx['required'] == True
-                assert variable_tx['amount'] == 75.00
+                assert variable_tx['amount'] == self.young_prof_variable * 0.8
                 
                 # Check luxury transaction
                 luxury_tx = next(t for t in transactions if t['purchase_type'] == 'luxury')
                 assert luxury_tx['required'] == False
                 assert luxury_tx['purchase_quantity'] == 2
-                assert luxury_tx['amount'] == 24.00  # 2 * 12.00
+                assert luxury_tx['amount'] == 2 * self.luxury_cost
                 
                 # Check savings calculation
                 # Initial: 1000
-                # + Net income: 277 - 92 - 75 = 110
-                # - Luxury: 24
-                # + Interest: (1000 + 110 - 24) * 0.00 = 0
-                expected_savings = 1000 + 110 - 24 + (1086 * 0.00)
+                # + Net income: income - fixed - variable
+                # - Luxury: 2 * luxury_cost
+                # + Interest: 0 (period 0, no interest)
+                net_income = self.young_prof_income - self.young_prof_fixed - (self.young_prof_variable * 0.8)
+                expected_savings = 1000 + net_income - (2 * self.luxury_cost)
                 assert abs(self.agent.savings - expected_savings) < 0.01
                 
                 # Check period increment
@@ -310,16 +333,18 @@ class TestAgent(unittest.TestCase):
         self.agent.savings = 50.0  # Low savings
         
         with patch('random.uniform') as mock_random:
-            mock_random.return_value = 300.0
+            mock_random.return_value = self.young_prof_variable  # Max variable cost
             
             with patch.object(self.agent, 'decide_luxury_purchases') as mock_decide:
-                # Agent wants to buy 5 units (250 cost) but after income they'll have:
-                # 50 + (1200 - 400 - 300) = 50 + 500 = 550 savings
-                # So they CAN afford 5 units at 50 each = 250 cost
-                # Let's make them want to buy more than they can afford
-                mock_decide.return_value = 15  # Try to buy 15 units (750 cost) but only have 550 savings
+                # Calculate how much they'll have after income and expenses
+                net_income = self.young_prof_income - self.young_prof_fixed - self.young_prof_variable
+                total_available = 50.0 + net_income
+                max_affordable_units = int(total_available // self.luxury_cost)
                 
-                transactions = self.agent.process_period(50.0, 0.02, 0)
+                # Make them want to buy more than they can afford
+                mock_decide.return_value = max_affordable_units + 10
+                
+                transactions = self.agent.process_period(self.luxury_cost, self.interest_rate, 0)
                 
                 # Should only have fixed and variable cost transactions, no luxury
                 transaction_types = [t['purchase_type'] for t in transactions]
@@ -339,9 +364,9 @@ class TestAgent(unittest.TestCase):
             'agent_type': 'young_professional',
             'period': 3,
             'savings': 750.00,
-            'income': 277.00,
-            'fixed_cost': 92.00,
-            'variable_cost': 92.00
+            'income': self.young_prof_income,
+            'fixed_cost': self.young_prof_fixed,
+            'variable_cost': self.young_prof_variable
         }
         
         assert state == expected_state
@@ -363,6 +388,16 @@ class TestAgent(unittest.TestCase):
 
 class TestAgentEconomicDecisions(unittest.TestCase):
     """Test economic decision-making scenarios."""
+    
+    @classmethod
+    def setUpClass(cls):
+        """Set up class-level test configuration."""
+        # Load actual configuration values
+        cls.config = load_config()
+        cls.agent_types_df = load_agent_types()
+        
+        # Get economic parameters
+        cls.luxury_cost = cls.config['economics']['luxury_cost_per_unit']
     
     def setUp(self):
         """Set up test agents for economic scenarios."""
@@ -418,13 +453,15 @@ class TestAgentEconomicDecisions(unittest.TestCase):
         self.young_professional.savings = 500.00
         self.young_professional.actual_variable_cost = 75.00
         
-        prompt = self.young_professional._create_luxury_prompt(25.00, 0.00)
+        luxury_cost = self.luxury_cost
+        prompt = self.young_professional._create_luxury_prompt(luxury_cost, 0.00)
         
         # Check for key economic information
         assert "500.00" in prompt  # Savings amount
-        assert "25.00" in prompt  # Luxury cost
+        assert f"{luxury_cost:.2f}" in prompt  # Luxury cost
         assert "0.000%" in prompt  # Weekly interest rate (0%/52)
-        assert "20 units" in prompt  # Max affordable (500/25)
+        max_affordable = int(500.00 // luxury_cost)
+        assert f"{max_affordable} units" in prompt  # Max affordable
 
 
 class TestAgentEdgeCases(unittest.TestCase):
