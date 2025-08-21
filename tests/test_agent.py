@@ -21,43 +21,43 @@ class TestAgent(unittest.TestCase):
         self.agent = Agent(
             agent_id=1,
             agent_type="young_professional",
-            income=1200.0,
-            fixed_cost=400.0,
-            variable_cost=400.0
+            income=277.00,
+            fixed_cost=92.00,
+            variable_cost=92.00
         )
     
     def test_agent_initialization(self):
         """Test agent initialization."""
         assert self.agent.agent_id == 1
         assert self.agent.agent_type == "young_professional"
-        assert self.agent.income == 1200.0
-        assert self.agent.fixed_cost == 400.0
-        assert self.agent.variable_cost == 400.0
-        assert self.agent.savings == 0.0
+        assert self.agent.income == 277.00
+        assert self.agent.fixed_cost == 92.00
+        assert self.agent.variable_cost == 92.00
+        assert self.agent.savings == 0.00
         assert self.agent.period == 0
         assert len(self.agent.chat_history) == 0
     
     def test_calculate_net_income(self):
         """Test net income calculation."""
         with patch('random.uniform') as mock_random:
-            mock_random.return_value = 200.0  # Variable cost
+            mock_random.return_value = 46.00  # Variable cost
             
             net_income, variable_cost = self.agent.calculate_net_income()
             
-            expected_net = 1200.0 - 400.0 - 200.0  # income - fixed - variable
+            expected_net = 277.00 - 92.00 - 46.00  # income - fixed - variable
             assert net_income == expected_net
-            assert variable_cost == 200.0
+            assert variable_cost == 46.00
     
     def test_calculate_net_income_negative(self):
         """Test net income calculation resulting in negative value."""
         with patch('random.uniform') as mock_random:
-            mock_random.return_value = 400.0  # Maximum variable cost
+            mock_random.return_value = 92.00  # Maximum variable cost
             
             net_income, variable_cost = self.agent.calculate_net_income()
             
-            expected_net = 1200.0 - 400.0 - 400.0  # = 400.0
+            expected_net = 277.00 - 92.00 - 92.00  # = 93.00
             assert net_income == expected_net
-            assert variable_cost == 400.0
+            assert variable_cost == 92.00
     
     def test_parse_luxury_response_with_validation_valid(self):
         """Test parsing valid luxury response with new validation method."""
@@ -113,13 +113,13 @@ class TestAgent(unittest.TestCase):
         self.agent.savings = 200.0
         
         # First retry prompt
-        prompt1 = self.agent._create_simplified_prompt(50.0, 4, 1)
+        prompt1 = self.agent._create_simplified_prompt(12.0, 4, 1)
         assert "RETRY" in prompt1
         assert "0 to 4" in prompt1
         assert "Examples of correct responses" in prompt1
         
         # Second retry prompt (ultra-minimal)
-        prompt2 = self.agent._create_simplified_prompt(50.0, 4, 2)
+        prompt2 = self.agent._create_simplified_prompt(12.0, 4, 2)
         assert len(prompt2) < len(prompt1)  # Should be shorter
         assert "0 to 4" in prompt2
 
@@ -264,15 +264,15 @@ class TestAgent(unittest.TestCase):
     
     def test_process_period_complete(self):
         """Test complete period processing."""
-        self.agent.savings = 1000.0
+        self.agent.savings = 1000.00
         
         with patch('random.uniform') as mock_random:
-            mock_random.return_value = 300.0  # Variable cost
+            mock_random.return_value = 75.00  # Variable cost (within 92.00 range)
             
             with patch.object(self.agent, 'decide_luxury_purchases') as mock_decide:
                 mock_decide.return_value = 2  # Buy 2 luxury units
                 
-                transactions = self.agent.process_period(50.0, 0.02)
+                transactions = self.agent.process_period(12.00, 0.00)
                 
                 # Check transactions
                 assert len(transactions) == 3  # fixed, variable, luxury
@@ -281,25 +281,25 @@ class TestAgent(unittest.TestCase):
                 fixed_tx = next(t for t in transactions if t['purchase_type'] == 'fixed_cost')
                 assert fixed_tx['agent_id'] == 1
                 assert fixed_tx['required'] == True
-                assert fixed_tx['amount'] == 400.0
+                assert fixed_tx['amount'] == 92.00
                 
                 # Check variable cost transaction
                 variable_tx = next(t for t in transactions if t['purchase_type'] == 'variable_cost')
                 assert variable_tx['required'] == True
-                assert variable_tx['amount'] == 300.0
+                assert variable_tx['amount'] == 75.00
                 
                 # Check luxury transaction
                 luxury_tx = next(t for t in transactions if t['purchase_type'] == 'luxury')
                 assert luxury_tx['required'] == False
                 assert luxury_tx['purchase_quantity'] == 2
-                assert luxury_tx['amount'] == 100.0  # 2 * 50.0
+                assert luxury_tx['amount'] == 24.00  # 2 * 12.00
                 
                 # Check savings calculation
                 # Initial: 1000
-                # + Net income: 1200 - 400 - 300 = 500
-                # - Luxury: 100
-                # + Interest: (1000 + 500 - 100) * (0.02/12) = 1400 * (0.02/12) = ~2.33
-                expected_savings = 1000 + 500 - 100 + (1400 * (0.02/12))
+                # + Net income: 277 - 92 - 75 = 110
+                # - Luxury: 24
+                # + Interest: (1000 + 110 - 24) * 0.00 = 0
+                expected_savings = 1000 + 110 - 24 + (1086 * 0.00)
                 assert abs(self.agent.savings - expected_savings) < 0.01
                 
                 # Check period increment
@@ -329,7 +329,7 @@ class TestAgent(unittest.TestCase):
     
     def test_get_state(self):
         """Test getting agent state."""
-        self.agent.savings = 750.0
+        self.agent.savings = 750.00
         self.agent.period = 3
         
         state = self.agent.get_state()
@@ -338,10 +338,10 @@ class TestAgent(unittest.TestCase):
             'agent_id': 1,
             'agent_type': 'young_professional',
             'period': 3,
-            'savings': 750.0,
-            'income': 1200.0,
-            'fixed_cost': 400.0,
-            'variable_cost': 400.0
+            'savings': 750.00,
+            'income': 277.00,
+            'fixed_cost': 92.00,
+            'variable_cost': 92.00
         }
         
         assert state == expected_state
@@ -415,16 +415,16 @@ class TestAgentEconomicDecisions(unittest.TestCase):
     
     def test_economic_metrics_in_prompt(self):
         """Test that economic metrics are correctly calculated in prompts."""
-        self.young_professional.savings = 500.0
-        self.young_professional.actual_variable_cost = 300.0
+        self.young_professional.savings = 500.00
+        self.young_professional.actual_variable_cost = 75.00
         
-        prompt = self.young_professional._create_luxury_prompt(100.0, 0.06)
+        prompt = self.young_professional._create_luxury_prompt(25.00, 0.00)
         
         # Check for key economic information
         assert "500.00" in prompt  # Savings amount
-        assert "100.00" in prompt  # Luxury cost
-        assert "0.500%" in prompt  # Monthly interest rate (6%/12)
-        assert "5 units" in prompt  # Max affordable (500/100)
+        assert "25.00" in prompt  # Luxury cost
+        assert "0.000%" in prompt  # Weekly interest rate (0%/52)
+        assert "20 units" in prompt  # Max affordable (500/25)
 
 
 class TestAgentEdgeCases(unittest.TestCase):

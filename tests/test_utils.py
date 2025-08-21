@@ -43,8 +43,8 @@ class TestConfigLoading:
     def test_load_config_valid(self):
         """Test loading valid configuration."""
         config_data = {
-            "simulation": {"periods": 12, "agents_per_type": 5},
-            "economics": {"interest_rate": 0.02, "luxury_cost_per_unit": 50.0},
+            "simulation": {"periods": 52, "agents_per_type": 5},
+            "economics": {"interest_rate": 0.00, "luxury_cost_per_unit": 12.00},
             "llm": {"model_name": "gemini-2.0-flash-exp", "temperature": 0.7, "max_tokens": 1000}
         }
         
@@ -70,16 +70,16 @@ class TestConfigLoading:
     
     def test_load_agent_types_valid(self):
         """Test loading valid agent types."""
-        csv_data = "agent_type,income,fixed_cost,variable_cost\nyoung_professional,1200.0,400.0,400.0\n"
+        csv_data = "agent_type,income,fixed_cost,variable_cost\nyoung_professional,277.00,92.00,92.00\n"
         
         with patch('src.utils.Path') as mock_path:
             mock_path.return_value.exists.return_value = True
             with patch('pandas.read_csv') as mock_read_csv:
                 mock_df = pd.DataFrame({
                     'agent_type': ['young_professional'],
-                    'income': [1200.0],
-                    'fixed_cost': [400.0],
-                    'variable_cost': [400.0]
+                    'income': [277.00],
+                    'fixed_cost': [400.00],
+                    'variable_cost': [400.00]
                 })
                 mock_read_csv.return_value = mock_df
                 
@@ -105,8 +105,8 @@ class TestConfigValidation:
     def test_validate_config_valid(self):
         """Test validation of valid configuration."""
         config = {
-            "simulation": {"periods": 12, "agents_per_type": 5},
-            "economics": {"interest_rate": 0.02, "luxury_cost_per_unit": 50.0},
+            "simulation": {"periods": 52, "agents_per_type": 5},
+            "economics": {"interest_rate": 0.00, "luxury_cost_per_unit": 12.00},
             "llm": {"model_name": "gemini-2.0-flash-exp", "temperature": 0.7, "max_tokens": 1000}
         }
         # Should not raise any exception
@@ -124,8 +124,8 @@ class TestConfigValidation:
     def test_validate_config_missing_key(self):
         """Test validation with missing key."""
         config = {
-            "simulation": {"periods": 12},  # Missing agents_per_type
-            "economics": {"interest_rate": 0.02, "luxury_cost_per_unit": 50.0},
+            "simulation": {"periods": 52},  # Missing agents_per_type
+            "economics": {"interest_rate": 0.00, "luxury_cost_per_unit": 12.00},
             "llm": {"model_name": "gemini-2.0-flash-exp", "temperature": 0.7, "max_tokens": 1000}
         }
         with pytest.raises(ValueError, match="Missing configuration key"):
@@ -136,7 +136,7 @@ class TestConfigValidation:
         # Test negative periods
         config = {
             "simulation": {"periods": -1, "agents_per_type": 5},
-            "economics": {"interest_rate": 0.02, "luxury_cost_per_unit": 50.0},
+            "economics": {"interest_rate": 0.00, "luxury_cost_per_unit": 12.00},
             "llm": {"model_name": "gemini-2.0-flash-exp", "temperature": 0.7, "max_tokens": 1000}
         }
         with pytest.raises(ValueError, match="periods must be positive"):
