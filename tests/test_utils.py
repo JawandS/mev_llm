@@ -51,7 +51,12 @@ class TestConfigLoading:
         # Use actual config values for testing
         config_data = {
             "simulation": {"periods": self.actual_config['simulation']['periods'], "agents_per_type": self.actual_config['simulation']['agents_per_type']},
-            "economics": {"interest_rate": self.actual_config['economics']['interest_rate'], "luxury_cost_per_unit": self.actual_config['economics']['luxury_cost_per_unit']},
+            "economics": {
+                "interest_rate": self.actual_config['economics']['interest_rate'], 
+                "discretionary_goods": self.actual_config['economics']['discretionary_goods'],
+                "fixed_costs": self.actual_config['economics']['fixed_costs'],
+                "variable_costs": self.actual_config['economics']['variable_costs']
+            },
             "llm": {"model_name": "gemini-2.0-flash-exp", "temperature": 0.7, "max_tokens": 1000}
         }
         
@@ -79,22 +84,25 @@ class TestConfigLoading:
         """Test loading valid agent types."""
         # Get first row from actual data for testing
         first_agent = self.actual_agent_types.iloc[0]
-        csv_data = f"agent_type,income,fixed_cost,variable_cost\n{first_agent['agent_type']},{first_agent['income']},{first_agent['fixed_cost']},{first_agent['variable_cost']}\n"
+        # Build CSV data using actual column structure
+        columns = list(self.actual_agent_types.columns)
+        row_values = [str(first_agent[col]) for col in columns]
+        csv_data = ",".join(columns) + "\n" + ",".join(row_values) + "\n"
         
         with patch('src.utils.Path') as mock_path:
             mock_path.return_value.exists.return_value = True
             with patch('pandas.read_csv') as mock_read_csv:
-                mock_df = pd.DataFrame({
-                    'agent_type': [first_agent['agent_type']],
-                    'income': [first_agent['income']],
-                    'fixed_cost': [first_agent['fixed_cost']],
-                    'variable_cost': [first_agent['variable_cost']]
-                })
+                # Create mock DataFrame with actual column structure
+                mock_data = {col: [first_agent[col]] for col in columns}
+                mock_df = pd.DataFrame(mock_data)
                 mock_read_csv.return_value = mock_df
                 
-                result = load_agent_types()
-                assert len(result) == 1
-                assert result.iloc[0]['agent_type'] == first_agent['agent_type']
+                # Mock load_config to return a proper config structure
+                with patch('src.utils.load_config') as mock_load_config:
+                    mock_load_config.return_value = self.actual_config
+                    result = load_agent_types()
+                    assert len(result) == 1
+                    assert result.iloc[0]['agent_type'] == first_agent['agent_type']
     
     def test_load_agent_types_missing_columns(self):
         """Test loading agent types with missing required columns."""
@@ -104,8 +112,11 @@ class TestConfigLoading:
                 mock_df = pd.DataFrame({'agent_type': ['test']})  # Missing required columns
                 mock_read_csv.return_value = mock_df
                 
-                with pytest.raises(ValueError, match="must contain columns"):
-                    load_agent_types()
+                # Mock load_config to return a proper config structure
+                with patch('src.utils.load_config') as mock_load_config:
+                    mock_load_config.return_value = self.actual_config
+                    with pytest.raises(ValueError, match="must contain columns"):
+                        load_agent_types()
 
 
 class TestConfigValidation:
@@ -120,7 +131,10 @@ class TestConfigValidation:
         """Test validation of valid configuration."""
         config = {
             "simulation": {"periods": self.actual_config['simulation']['periods'], "agents_per_type": self.actual_config['simulation']['agents_per_type']},
-            "economics": {"interest_rate": self.actual_config['economics']['interest_rate'], "luxury_cost_per_unit": self.actual_config['economics']['luxury_cost_per_unit']},
+            "economics": {
+                "interest_rate": self.actual_config['economics']['interest_rate'], 
+                "discretionary_goods": self.actual_config['economics']['discretionary_goods']
+            },
             "llm": {"model_name": "gemini-2.0-flash-exp", "temperature": 0.7, "max_tokens": 1000}
         }
         # Should not raise any exception
@@ -139,7 +153,10 @@ class TestConfigValidation:
         """Test validation with missing key."""
         config = {
             "simulation": {"periods": self.actual_config['simulation']['periods']},  # Missing agents_per_type
-            "economics": {"interest_rate": self.actual_config['economics']['interest_rate'], "luxury_cost_per_unit": self.actual_config['economics']['luxury_cost_per_unit']},
+            "economics": {
+                "interest_rate": self.actual_config['economics']['interest_rate'], 
+                "discretionary_goods": self.actual_config['economics']['discretionary_goods']
+            },
             "llm": {"model_name": "gemini-2.0-flash-exp", "temperature": 0.7, "max_tokens": 1000}
         }
         with pytest.raises(ValueError, match="Missing configuration key"):
@@ -150,7 +167,10 @@ class TestConfigValidation:
         # Test negative periods
         config = {
             "simulation": {"periods": -1, "agents_per_type": self.actual_config['simulation']['agents_per_type']},
-            "economics": {"interest_rate": self.actual_config['economics']['interest_rate'], "luxury_cost_per_unit": self.actual_config['economics']['luxury_cost_per_unit']},
+            "economics": {
+                "interest_rate": self.actual_config['economics']['interest_rate'], 
+                "discretionary_goods": self.actual_config['economics']['discretionary_goods']
+            },
             "llm": {"model_name": "gemini-2.0-flash-exp", "temperature": 0.7, "max_tokens": 1000}
         }
         with pytest.raises(ValueError, match="periods must be positive"):
@@ -166,7 +186,7 @@ class TestConfigValidation:
         """Test validation of different agents_per_type formats."""
         base_config = {
             "simulation": {"periods": 12},
-            "economics": {"interest_rate": 0.04, "luxury_cost_per_unit": 12.0},
+            "economics": {"interest_rate": 0.04, "discretionary_goods": {"entertainment": 8.0, "travel": 15.0}},
             "llm": {"model_name": "gemini-2.0-flash-exp", "temperature": 0.7, "max_tokens": 1000}
         }
         

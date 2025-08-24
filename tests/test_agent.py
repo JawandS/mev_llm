@@ -29,11 +29,20 @@ class TestAgent(unittest.TestCase):
         young_prof_data = cls.agent_types_df[
             cls.agent_types_df['agent_type'] == 'young_professional'
         ].iloc[0]
-        cls.young_prof_income = young_prof_data['income']
-        cls.young_prof_housing = young_prof_data['housing']
-        cls.young_prof_insurance = young_prof_data['insurance']
-        cls.young_prof_healthcare = young_prof_data['healthcare']
-        cls.young_prof_repair = young_prof_data['repair']
+        cls.young_prof_income = float(young_prof_data['income'])
+        
+        # Build fixed and variable costs from config structure
+        cls.fixed_costs = {}
+        for cost_type in cls.config['economics']['fixed_costs']:
+            cls.fixed_costs[cost_type] = float(young_prof_data[cost_type])
+        
+        cls.variable_costs = {}
+        for cost_type in cls.config['economics']['variable_costs']:
+            cls.variable_costs[cost_type] = float(young_prof_data[cost_type])
+            
+        # Calculate totals for backward compatibility
+        cls.young_prof_fixed = sum(cls.fixed_costs.values())
+        cls.young_prof_variable = sum(cls.variable_costs.values())
         
         # Get economic parameters - config has nested structure
         cls.interest_rate = cls.config['economics']['interest_rate']
@@ -45,10 +54,8 @@ class TestAgent(unittest.TestCase):
             agent_id=1,
             agent_type="young_professional",
             income=self.young_prof_income,
-            housing=self.young_prof_housing,
-            insurance=self.young_prof_insurance,
-            healthcare=self.young_prof_healthcare,
-            repair=self.young_prof_repair,
+            fixed_costs=self.fixed_costs,
+            variable_costs=self.variable_costs,
             discretionary_goods=self.discretionary_goods
         )
     
@@ -65,75 +72,125 @@ class TestAgent(unittest.TestCase):
     
     def test_calculate_net_income(self):
         """Test net income calculation."""
-        test_variable_cost = self.young_prof_variable / 2  # Use half of max variable cost
+        # Since there are 2 variable cost categories, mock both calls
+        healthcare_cost = self.variable_costs['healthcare'] / 2
+        repair_cost = self.variable_costs['repair'] / 2
         with patch('random.uniform') as mock_random:
-            mock_random.return_value = test_variable_cost
+            mock_random.side_effect = [healthcare_cost, repair_cost]
             
-            net_income, variable_cost = self.agent.calculate_net_income()
+            net_income, total_variable_cost = self.agent.calculate_net_income()
             
-            expected_net = self.young_prof_income - self.young_prof_fixed - test_variable_cost
+            expected_variable_cost = healthcare_cost + repair_cost
+            expected_net = self.young_prof_income - self.young_prof_fixed - expected_variable_cost
             assert net_income == expected_net
-            assert variable_cost == test_variable_cost
+            assert total_variable_cost == expected_variable_cost
     
     def test_calculate_net_income_negative(self):
         """Test net income calculation resulting in negative value."""
+        # Use maximum costs for both variable cost categories
+        healthcare_cost = self.variable_costs['healthcare']
+        repair_cost = self.variable_costs['repair']
         with patch('random.uniform') as mock_random:
-            mock_random.return_value = self.young_prof_variable  # Maximum variable cost
+            mock_random.side_effect = [healthcare_cost, repair_cost]
             
-            net_income, variable_cost = self.agent.calculate_net_income()
+            net_income, total_variable_cost = self.agent.calculate_net_income()
             
-            expected_net = self.young_prof_income - self.young_prof_fixed - self.young_prof_variable
+            expected_variable_cost = healthcare_cost + repair_cost
+            expected_net = self.young_prof_income - self.young_prof_fixed - expected_variable_cost
             assert net_income == expected_net
-            assert variable_cost == self.young_prof_variable
+            assert total_variable_cost == expected_variable_cost
     
-    def test_parse_luxury_response_with_validation_valid(self):
-        """Test parsing valid luxury response with new validation method."""
-        # Valid clean number
-        result, success = self.agent._parse_luxury_response_with_validation("3", 5)
-        assert result == 3
-        assert success == True
-        
-        # Valid zero
-        result, success = self.agent._parse_luxury_response_with_validation("0", 5)
-        assert result == 0
-        assert success == True
-        
-        # Valid number at max affordable
-        result, success = self.agent._parse_luxury_response_with_validation("5", 5)
-        assert result == 5
-        assert success == True
+    # DISABLED - API changed from luxury_purchases to discretionary_purchases
+    # def test_parse_luxury_response_with_validation_valid(self):
+    #     """Test parsing valid luxury response with new validation method."""
+    #     # Valid clean number
+    #     result, success = self.agent._parse_luxury_response_with_validation("3", 5)
+    #     assert result == 3
+    #     assert success == True
+    #     
+    #     # Valid zero
+    #     result, success = self.agent._parse_luxury_response_with_validation("0", 5)
+    #     assert result == 0
+    #     assert success == True
+    #     
+    #     # Valid number at max affordable
+    #     result, success = self.agent._parse_luxury_response_with_validation("5", 5)
+    #     assert result == 5
+    #     assert success == True
 
-    def test_parse_luxury_response_with_validation_invalid(self):
-        """Test parsing invalid responses that should trigger reprompt."""
-        # Text with number should fail (strict parsing)
-        result, success = self.agent._parse_luxury_response_with_validation("I want 3 items", 5)
-        assert result == 0
-        assert success == False
+    @patch('src.agent.requests')
+    def test_new_discretionary_purchases_api(self, mock_requests):
+        """Test the new discretionary purchases API."""
+        self.agent.savings = 100.0
         
-        # Number with punctuation should fail
-        result, success = self.agent._parse_luxury_response_with_validation("3.", 5)
-        assert result == 0
-        assert success == False
+        # Mock successful LLM response in JSON format
+        mock_response = Mock()
+        mock_response.json.return_value = {
+            "response": '{"entertainment": 2, "travel": 1}'
+        }
+        mock_response.raise_for_status.return_value = None
+        mock_requests.post.return_value = mock_response
         
-        # Number too high should fail
-        result, success = self.agent._parse_luxury_response_with_validation("10", 5)
-        assert result == 0
-        assert success == False
+        # Test that method exists and returns expected format
+        result = self.agent.decide_discretionary_purchases(interest_rate=0.04)
         
-        # Negative number should fail
-        result, success = self.agent._parse_luxury_response_with_validation("-1", 5)
-        assert result == 0
-        assert success == False
+        # Should return a dictionary of purchases
+        assert isinstance(result, dict)
         
-        # Empty response should fail
-        result, success = self.agent._parse_luxury_response_with_validation("", 5)
-        assert result == 0
-        assert success == False
+        # Should have keys for available discretionary goods
+        for good in self.discretionary_goods.keys():
+            assert good in result
+            assert isinstance(result[good], int)
+            assert result[good] >= 0
         
-        # Non-numeric text should fail
-        result, success = self.agent._parse_luxury_response_with_validation("hello", 5)
-        assert result == 0
-        assert success == False
+        # Should have the expected values from our mock
+        assert result['entertainment'] == 2
+        assert result['travel'] == 1
+
+    # DISABLED - API changed, method signatures and return types different
+    # def test_parse_luxury_response_with_validation_invalid(self):
+    #     """Test parsing invalid responses that should trigger reprompt."""
+    #     # Text with number should fail (strict parsing)
+    #     result, success = self.agent._parse_luxury_response_with_validation("I want 3 items", 5)
+    #     assert result == 0
+    #     assert success == False
+    #     ...
+
+    @patch('src.agent.requests')
+    def test_new_process_period_api(self, mock_requests):
+        """Test the new process_period API."""
+        self.agent.savings = 50.0
+        
+        # Mock successful LLM response in JSON format
+        mock_response = Mock()
+        mock_response.json.return_value = {
+            "response": '{"entertainment": 1, "travel": 0}'
+        }
+        mock_response.raise_for_status.return_value = None
+        mock_requests.post.return_value = mock_response
+        
+        # Mock random.uniform for variable costs
+        with patch('random.uniform') as mock_random:
+            mock_random.side_effect = [50.0, 20.0]  # healthcare, repair costs
+            
+            # Test that method exists and returns expected format
+            transactions = self.agent.process_period(
+                interest_rate=0.04,
+                current_period=1
+            )
+            
+            # Should return a list of transaction dictionaries
+            assert isinstance(transactions, list)
+            
+            # Should have some transactions (income, expenses, purchases)
+            assert len(transactions) > 0
+            
+            # Each transaction should be a dictionary with expected keys
+            for transaction in transactions:
+                assert isinstance(transaction, dict)
+                assert 'agent_id' in transaction
+                assert 'amount' in transaction
+                assert 'period_num' in transaction
 
     def test_create_simplified_prompt(self):
         """Test simplified prompt creation for retries."""
@@ -403,6 +460,19 @@ class TestAgentEconomicDecisions(unittest.TestCase):
         
         # Get economic parameters
         cls.discretionary_goods = cls.config['economics']['discretionary_goods']
+        
+        # Build cost dictionaries for young professional
+        young_prof_data = cls.agent_types_df[
+            cls.agent_types_df['agent_type'] == 'young_professional'
+        ].iloc[0]
+        
+        cls.young_prof_fixed_costs = {}
+        for cost_type in cls.config['economics']['fixed_costs']:
+            cls.young_prof_fixed_costs[cost_type] = young_prof_data[cost_type]
+        
+        cls.young_prof_variable_costs = {}
+        for cost_type in cls.config['economics']['variable_costs']:
+            cls.young_prof_variable_costs[cost_type] = young_prof_data[cost_type]
     
     def setUp(self):
         """Set up test agents for economic scenarios."""
@@ -410,10 +480,8 @@ class TestAgentEconomicDecisions(unittest.TestCase):
             agent_id=10,
             agent_type="young_professional",
             income=4800.0,
-            housing=800.0,
-            insurance=200.0,
-            healthcare=150.0,
-            repair=50.0,
+            fixed_costs={'housing': 800.0, 'insurance': 200.0},
+            variable_costs={'healthcare': 150.0, 'repair': 50.0},
             discretionary_goods=self.discretionary_goods
         )
         
@@ -421,10 +489,8 @@ class TestAgentEconomicDecisions(unittest.TestCase):
             agent_id=11,
             agent_type="low_income",
             income=1800.0,
-            housing=600.0,
-            insurance=250.0,
-            healthcare=120.0,
-            repair=30.0,
+            fixed_costs={'housing': 600.0, 'insurance': 250.0},
+            variable_costs={'healthcare': 120.0, 'repair': 30.0},
             discretionary_goods=self.discretionary_goods
         )
     
@@ -484,18 +550,18 @@ class TestAgentEdgeCases(unittest.TestCase):
             agent_id=2,
             agent_type="unemployed",
             income=0.0,
-            housing=80.0,
-            insurance=20.0,
-            healthcare=30.0,
-            repair=20.0,
+            fixed_costs={'housing': 80.0, 'insurance': 20.0},
+            variable_costs={'healthcare': 30.0, 'repair': 20.0},
             discretionary_goods={"entertainment": 8.0, "travel": 15.0}
         )
         
         with patch('random.uniform') as mock_random:
-            mock_random.return_value = 25.0
+            # Mock both variable cost calls
+            mock_random.side_effect = [15.0, 10.0]  # healthcare=15, repair=10
             
-            net_income, _ = agent.calculate_net_income()
-            assert net_income == -150.0  # 0 - (80+20) - (25+25)
+            net_income, total_variable_cost = agent.calculate_net_income()
+            assert net_income == -125.0  # 0 - (80+20) - (15+10)
+            assert total_variable_cost == 25.0
     
     def test_agent_with_high_savings_and_low_income(self):
         """Test agent with high savings but low income."""
@@ -503,10 +569,8 @@ class TestAgentEdgeCases(unittest.TestCase):
             agent_id=3,
             agent_type="retiree",
             income=200.0,
-            housing=200.0,
-            insurance=100.0,
-            healthcare=80.0,
-            repair=20.0,
+            fixed_costs={'housing': 200.0, 'insurance': 100.0},
+            variable_costs={'healthcare': 80.0, 'repair': 20.0},
             discretionary_goods={"entertainment": 8.0, "travel": 15.0}
         )
         agent.savings = 10000.0  # High savings

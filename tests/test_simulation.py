@@ -29,7 +29,7 @@ class TestSimulation(unittest.TestCase):
         
         # Extract values from config for assertions
         self.interest_rate = self.config['economics']['interest_rate']
-        self.luxury_cost = self.config['economics']['luxury_cost_per_unit']
+        self.discretionary_goods = self.config['economics']['discretionary_goods']
         self.periods = self.config['simulation']['periods']
         self.agents_per_type = self.config['simulation']['agents_per_type']
         
@@ -40,7 +40,12 @@ class TestSimulation(unittest.TestCase):
         # Mock configuration data that mimics actual config structure
         self.mock_config = {
             "simulation": {"periods": self.periods, "agents_per_type": self.simple_agents_per_type},
-            "economics": {"interest_rate": self.interest_rate, "luxury_cost_per_unit": self.luxury_cost},
+            "economics": {
+                "interest_rate": self.interest_rate, 
+                "discretionary_goods": self.discretionary_goods,
+                "fixed_costs": self.config['economics']['fixed_costs'],
+                "variable_costs": self.config['economics']['variable_costs']
+            },
             "llm": {"model_name": "gemini-2.0-flash-exp", "temperature": 0.7, "max_tokens": 1000}
         }
         
