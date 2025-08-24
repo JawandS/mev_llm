@@ -1,6 +1,6 @@
 {
   "simulation": {
-    "periods": 52,
+    "periods": 2,
     "agents_per_type": {
       "young_professional": 1,
       "family": 1,
@@ -12,8 +12,8 @@
   "economics": {
     "interest_rate": 0.04,
     "discretionary_goods": {
-      "entertainment": 8.00,
-      "travel": 15.00
+      "entertainment": 8,
+      "travel": 15
     },
     "fixed_costs": [
       "housing",

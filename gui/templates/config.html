@@ -13,7 +13,9 @@
         }
         
         .config-section, .agents-section {
-            max-height: calc(100vh - 200px); /* Account for header and padding */
+            max-height: calc(100vh - 200px);
+            overflow-y: auto;
+            padding-right: 0.5rem;
         }
         
         /* Smooth scrolling for better UX */
@@ -89,34 +91,35 @@
                     </h2>
                 </div>
                 <div class="p-6 overflow-y-auto flex-1 min-h-0 scroll-container">
-                    <form id="config-form">
-                        <!-- Simulation Settings -->
-                        <div class="mb-6">
-                            <h3 class="text-lg font-medium text-gray-900 mb-4">Simulation Settings</h3>
-                            <div class="space-y-4">
-                                <div>
-                                    <label for="periods" class="block text-sm font-medium text-gray-700">Periods</label>
-                                    <input type="number" id="periods" name="periods" value="{{ config.simulation.periods }}" 
-                                           class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
-                                </div>
-                                
-                                <div>
-                                    <label class="block text-sm font-medium text-gray-700 mb-2">Agents per Type</label>
-                                    <div class="grid grid-cols-2 gap-3">
-                                        {% for agent_type, count in config.simulation.agents_per_type.items() %}
-                                        <div>
-                                            <label for="agent-{{ agent_type }}" class="block text-xs font-medium text-gray-600">
-                                                {{ agent_type.replace('_', ' ').title() }}
-                                            </label>
-                                            <input type="number" id="agent-{{ agent_type }}" name="agent-{{ agent_type }}" 
-                                                   value="{{ count }}" min="0" 
-                                                   class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm">
+                    <form id="config-form" class="h-full flex flex-col">
+                        <div class="flex-1">
+                            <!-- Simulation Settings -->
+                            <div class="mb-6">
+                                <h3 class="text-lg font-medium text-gray-900 mb-4">Simulation Settings</h3>
+                                <div class="space-y-4">
+                                    <div>
+                                        <label for="periods" class="block text-sm font-medium text-gray-700">Periods</label>
+                                        <input type="number" id="periods" name="periods" value="{{ config.simulation.periods }}" 
+                                               class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
+                                    </div>
+                                    
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-2">Agents per Type</label>
+                                        <div class="grid grid-cols-2 gap-3">
+                                            {% for agent_type, count in config.simulation.agents_per_type.items() %}
+                                            <div>
+                                                <label for="agent-{{ agent_type }}" class="block text-xs font-medium text-gray-600">
+                                                    {{ agent_type.replace('_', ' ').title() }}
+                                                </label>
+                                                <input type="number" id="agent-{{ agent_type }}" name="agent-{{ agent_type }}" 
+                                                       value="{{ count }}" min="0" 
+                                                       class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm">
+                                            </div>
+                                            {% endfor %}
                                         </div>
-                                        {% endfor %}
                                     </div>
                                 </div>
                             </div>
-                        </div>
 
                         <!-- Economics Settings -->
                         <div class="mb-6 border-t pt-6">
@@ -158,6 +161,58 @@
                                         {% endfor %}
                                     </div>
                                 </div>
+                                
+                                <div>
+                                    <div class="flex justify-between items-center mb-2">
+                                        <label class="block text-sm font-medium text-gray-700">Fixed Costs</label>
+                                        <button type="button" onclick="addFixedCost()" 
+                                                class="bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium py-1 px-2 rounded transition duration-150">
+                                            <span class="material-icons mr-1 text-xs">add</span>
+                                            Add Cost
+                                        </button>
+                                    </div>
+                                    <div id="fixed-costs-container" class="space-y-2">
+                                        {% for cost in config.economics.fixed_costs %}
+                                        <div class="fixed-cost-item flex gap-2">
+                                            <div class="flex-1">
+                                                <input type="text" value="{{ cost }}" placeholder="Cost name" 
+                                                       class="fixed-cost-name block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm">
+                                            </div>
+                                            <button type="button" onclick="removeFixedCost(this)" 
+                                                    class="text-red-600 hover:text-red-900 bg-red-100 hover:bg-red-200 p-1 rounded text-xs">
+                                                <span class="material-icons text-sm">delete</span>
+                                            </button>
+                                        </div>
+                                        {% endfor %}
+                                    </div>
+                                    <p class="mt-1 text-xs text-gray-500">Costs that don't vary with income</p>
+                                </div>
+                                
+                                <div>
+                                    <div class="flex justify-between items-center mb-2">
+                                        <label class="block text-sm font-medium text-gray-700">Variable Costs</label>
+                                        <button type="button" onclick="addVariableCost()" 
+                                                class="bg-orange-600 hover:bg-orange-700 text-white text-xs font-medium py-1 px-2 rounded transition duration-150">
+                                            <span class="material-icons mr-1 text-xs">add</span>
+                                            Add Cost
+                                        </button>
+                                    </div>
+                                    <div id="variable-costs-container" class="space-y-2">
+                                        {% for cost in config.economics.variable_costs %}
+                                        <div class="variable-cost-item flex gap-2">
+                                            <div class="flex-1">
+                                                <input type="text" value="{{ cost }}" placeholder="Cost name" 
+                                                       class="variable-cost-name block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm">
+                                            </div>
+                                            <button type="button" onclick="removeVariableCost(this)" 
+                                                    class="text-red-600 hover:text-red-900 bg-red-100 hover:bg-red-200 p-1 rounded text-xs">
+                                                <span class="material-icons text-sm">delete</span>
+                                            </button>
+                                        </div>
+                                        {% endfor %}
+                                    </div>
+                                    <p class="mt-1 text-xs text-gray-500">Costs that may vary with economic conditions</p>
+                                </div>
                             </div>
                         </div>
 
@@ -187,15 +242,16 @@
                                 </div>
                             </div>
                         </div>
-
-                        <!-- Save Button -->
-                        <div class="mt-8 pt-6 border-t">
-                            <button type="submit" 
-                                    class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-md transition duration-150">
-                                Save Configuration
-                            </button>
                         </div>
                     </form>
+                </div>
+                
+                <!-- Save Configuration Button -->
+                <div class="px-6 py-4 border-t flex-shrink-0">
+                    <button onclick="saveConfiguration()" 
+                            class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-md transition duration-150">
+                        Save Configuration
+                    </button>
                 </div>
             </div>
 
@@ -328,12 +384,8 @@
             }
         }
 
-        // Configuration form handler
-        document.getElementById('config-form').addEventListener('submit', async function(e) {
-            e.preventDefault();
-            
-            const formData = new FormData(e.target);
-            
+        // Configuration saving function
+        async function saveConfiguration() {
             // Collect discretionary goods dynamically
             const discretionaryGoods = {};
             const goodItems = document.querySelectorAll('.discretionary-good-item');
@@ -345,27 +397,47 @@
                 }
             });
             
+            // Collect fixed costs
+            const fixedCosts = [];
+            const fixedCostItems = document.querySelectorAll('.fixed-cost-name');
+            fixedCostItems.forEach(item => {
+                const cost = item.value.trim();
+                if (cost) {
+                    fixedCosts.push(cost);
+                }
+            });
+            
+            // Collect variable costs
+            const variableCosts = [];
+            const variableCostItems = document.querySelectorAll('.variable-cost-name');
+            variableCostItems.forEach(item => {
+                const cost = item.value.trim();
+                if (cost) {
+                    variableCosts.push(cost);
+                }
+            });
+            
             const configData = {
                 simulation: {
-                    periods: parseInt(formData.get('periods')),
+                    periods: parseInt(document.getElementById('periods').value),
                     agents_per_type: {
-                        young_professional: parseInt(formData.get('agent-young_professional')),
-                        family: parseInt(formData.get('agent-family')),
-                        retiree: parseInt(formData.get('agent-retiree')),
-                        student: parseInt(formData.get('agent-student')),
-                        low_income: parseInt(formData.get('agent-low_income'))
+                        young_professional: parseInt(document.querySelector('[name="agent-young_professional"]').value),
+                        family: parseInt(document.querySelector('[name="agent-family"]').value),
+                        retiree: parseInt(document.querySelector('[name="agent-retiree"]').value),
+                        student: parseInt(document.querySelector('[name="agent-student"]').value),
+                        low_income: parseInt(document.querySelector('[name="agent-low_income"]').value)
                     }
                 },
                 economics: {
-                    interest_rate: parseFloat(formData.get('interest-rate')),
+                    interest_rate: parseFloat(document.getElementById('interest-rate').value),
                     discretionary_goods: discretionaryGoods,
-                    fixed_costs: ["housing", "insurance"],
-                    variable_costs: ["healthcare", "repair"]
+                    fixed_costs: fixedCosts,
+                    variable_costs: variableCosts
                 },
                 llm: {
-                    model_name: formData.get('model-name'),
-                    temperature: parseFloat(formData.get('temperature')),
-                    max_tokens: parseInt(formData.get('max-tokens'))
+                    model_name: document.getElementById('model-name').value,
+                    temperature: parseFloat(document.getElementById('temperature').value),
+                    max_tokens: parseInt(document.getElementById('max-tokens').value)
                 }
             };
             
@@ -373,13 +445,147 @@
                 const result = await apiCall('/api/config', 'POST', configData);
                 if (result.success) {
                     showNotification('Configuration saved successfully!', 'success');
+                    // Update agents with new cost structure
+                    await updateAgentsWithNewCosts(fixedCosts, variableCosts);
                 } else {
                     showNotification('Failed to save configuration: ' + result.message, 'error');
                 }
             } catch (error) {
                 showNotification('Error saving configuration: ' + error.message, 'error');
             }
-        });
+        }
+
+        // Function to update agents when costs structure changes
+        async function updateAgentsWithNewCosts(fixedCosts, variableCosts) {
+            try {
+                // Get current agents
+                const currentAgents = [];
+                const agentCards = document.querySelectorAll('.agent-card');
+                
+                agentCards.forEach(card => {
+                    const agent = {
+                        agent_type: card.querySelector('.agent-type').value,
+                        income: parseFloat(card.querySelector('.agent-income').value).toFixed(2)
+                    };
+                    
+                    // Add all current cost fields
+                    const costInputs = card.querySelectorAll('input[class*="agent-"]:not(.agent-type):not(.agent-income)');
+                    costInputs.forEach(input => {
+                        const costType = input.className.match(/agent-(\w+)/)[1];
+                        agent[costType] = parseFloat(input.value).toFixed(2);
+                    });
+                    
+                    currentAgents.push(agent);
+                });
+
+                // Rebuild agent cards with new cost structure
+                rebuildAgentCards(currentAgents, fixedCosts, variableCosts);
+                
+            } catch (error) {
+                console.error('Error updating agents with new costs:', error);
+                showNotification('Warning: Agents may need manual adjustment after cost structure change', 'warning');
+            }
+        }
+
+        // Function to rebuild agent cards with new cost structure
+        function rebuildAgentCards(agents, fixedCosts, variableCosts) {
+            const container = document.getElementById('agents-container');
+            container.innerHTML = '';
+            
+            agents.forEach((agent, index) => {
+                const newAgentDiv = document.createElement('div');
+                newAgentDiv.className = 'agent-card border border-gray-200 rounded-lg p-4';
+                newAgentDiv.setAttribute('data-agent-index', index);
+                
+                let costFields = '';
+                const allCosts = [...fixedCosts, ...variableCosts];
+                
+                allCosts.forEach(cost => {
+                    const value = agent[cost] || '0.00';
+                    costFields += `
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">${cost.charAt(0).toUpperCase() + cost.slice(1)} ($)</label>
+                            <input type="number" value="${value}" step="0.01" min="0"
+                                   class="agent-${cost} mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm">
+                        </div>
+                    `;
+                });
+                
+                newAgentDiv.innerHTML = `
+                    <div class="grid grid-cols-2 gap-3">
+                        <div class="col-span-2">
+                            <label class="block text-sm font-medium text-gray-700">Agent Type</label>
+                            <input type="text" value="${agent.agent_type}" 
+                                   class="agent-type mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Income ($)</label>
+                            <input type="number" value="${agent.income}" step="0.01" min="0"
+                                   class="agent-income mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm">
+                        </div>
+                        ${costFields}
+                        <div class="col-span-2 flex justify-end">
+                            <button onclick="deleteAgent(this)" 
+                                    class="text-red-600 hover:text-red-900 bg-red-100 hover:bg-red-200 p-2 rounded text-sm">
+                                <span class="material-icons text-sm">delete</span>
+                                Delete
+                            </button>
+                        </div>
+                    </div>
+                `;
+                
+                container.appendChild(newAgentDiv);
+            });
+        }
+
+        // Cost management functions
+        function addFixedCost() {
+            const list = document.getElementById('fixed-costs-container');
+            const newIndex = list.children.length;
+            
+            const div = document.createElement('div');
+            div.className = 'fixed-cost-item flex gap-2';
+            div.innerHTML = `
+                <div class="flex-1">
+                    <input type="text" value="new_cost" placeholder="Cost name"
+                           class="fixed-cost-name block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm">
+                </div>
+                <button type="button" onclick="removeFixedCost(this)" 
+                        class="text-red-600 hover:text-red-900 bg-red-100 hover:bg-red-200 p-1 rounded text-xs">
+                    <span class="material-icons text-sm">delete</span>
+                </button>
+            `;
+            
+            list.appendChild(div);
+        }
+
+        function removeFixedCost(button) {
+            button.parentElement.remove();
+        }
+
+        function addVariableCost() {
+            const list = document.getElementById('variable-costs-container');
+            const newIndex = list.children.length;
+            
+            const div = document.createElement('div');
+            div.className = 'variable-cost-item flex gap-2';
+            div.innerHTML = `
+                <div class="flex-1">
+                    <input type="text" value="new_cost" placeholder="Cost name"
+                           class="variable-cost-name block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm">
+                </div>
+                <button type="button" onclick="removeVariableCost(this)" 
+                        class="text-red-600 hover:text-red-900 bg-red-100 hover:bg-red-200 p-1 rounded text-xs">
+                    <span class="material-icons text-sm">delete</span>
+                </button>
+            `;
+            
+            list.appendChild(div);
+        }
+
+        function removeVariableCost(button) {
+            button.parentElement.remove();
+        }
 
         // Agent management functions
         function addNewAgent() {
