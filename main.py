@@ -54,6 +54,12 @@ Before running:
         help="Path to configuration file (default: config/config.json)"
     )
     
+    parser.add_argument(
+        "--frontend", "-f",
+        action="store_true",
+        help="Launch the web frontend for configuration management"
+    )
+    
     return parser.parse_args()
 
 
@@ -236,6 +242,55 @@ def check_prerequisites():
     return True
 
 
+def launch_frontend():
+    """Launch the Flask web frontend for configuration management."""
+    print("🌐 Starting MacroEconVue Web Frontend...")
+    print("="*50)
+    
+    # Check if Flask is available
+    try:
+        import flask
+    except ImportError:
+        print("❌ Flask not found. Installing required dependencies...")
+        try:
+            subprocess.run([sys.executable, "-m", "pip", "install", "flask"], check=True)
+            print("✅ Flask installed successfully")
+        except subprocess.CalledProcessError:
+            print("❌ Failed to install Flask. Please run: pip install flask")
+            sys.exit(1)
+    
+    # Import and run the Flask app
+    gui_dir = Path(__file__).parent / "gui"
+    if not gui_dir.exists():
+        print("❌ GUI directory not found. Please ensure gui/app.py exists.")
+        sys.exit(1)
+    
+    try:
+        # Add gui directory to Python path
+        sys.path.insert(0, str(gui_dir))
+        
+        # Import and run the Flask app
+        from app import app
+        
+        print("✅ Frontend started successfully!")
+        print("🌐 Open your browser and go to: http://localhost:5001")
+        print("📝 Use the web interface to configure your simulation")
+        print("\nPress Ctrl+C to stop the frontend")
+        print("-" * 50)
+        
+        app.run(debug=False, host='0.0.0.0', port=5001)
+        
+    except ImportError as e:
+        print(f"❌ Error importing Flask app: {e}")
+        print("   Please ensure gui/app.py exists and is properly configured")
+        sys.exit(1)
+    except KeyboardInterrupt:
+        print("\n\n✅ Frontend stopped")
+    except Exception as e:
+        print(f"\n❌ Frontend error: {e}")
+        sys.exit(1)
+
+
 def main():
     """Main entry point."""
     print("MEV LLM Economic Simulation")
@@ -243,6 +298,11 @@ def main():
     
     # Parse arguments
     args = parse_arguments()
+    
+    # Check if user wants to launch frontend
+    if args.frontend:
+        launch_frontend()
+        return
     
     # Check prerequisites
     if not check_prerequisites():
