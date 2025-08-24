@@ -6,6 +6,61 @@
     <title>MacroEconVue Configuration</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <style>
+        /* Custom styles for better scrolling behavior */
+        .main-container {
+            height: calc(100vh - 140px); /* Subtract header height */
+        }
+        
+        .config-section, .agents-section {
+            max-height: calc(100vh - 200px); /* Account for header and padding */
+        }
+        
+        /* Smooth scrolling for better UX */
+        .scroll-container {
+            scroll-behavior: smooth;
+            padding-bottom: 1rem; /* Add some bottom padding for better scrolling */
+        }
+        
+        /* Custom scrollbar styling */
+        .scroll-container::-webkit-scrollbar {
+            width: 6px;
+        }
+        
+        .scroll-container::-webkit-scrollbar-track {
+            background: #f1f5f9;
+            border-radius: 3px;
+        }
+        
+        .scroll-container::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 3px;
+        }
+        
+        .scroll-container::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+        
+        /* Mobile-friendly responsive adjustments */
+        @media (max-width: 1024px) {
+            .main-container {
+                height: auto;
+                min-height: calc(100vh - 140px);
+            }
+            
+            .config-section, .agents-section {
+                max-height: 60vh;
+            }
+        }
+        
+        /* Ensure grid layout stacks properly on mobile */
+        @media (max-width: 1024px) {
+            .grid-cols-1.lg\\:grid-cols-2 {
+                grid-template-columns: 1fr;
+                gap: 1.5rem;
+            }
+        }
+    </style>
 </head>
 <body class="bg-gray-50 min-h-screen">
     <!-- Header -->
@@ -20,20 +75,20 @@
     </header>
 
     <!-- Main Content -->
-    <main class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+    <main class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8 main-container flex flex-col">
         <!-- Notification Area -->
-        <div id="notification-area" class="mb-4"></div>
+        <div id="notification-area" class="mb-4 flex-shrink-0"></div>
 
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 flex-1 min-h-0">
             <!-- Configuration Section -->
-            <div class="bg-white shadow rounded-lg">
-                <div class="px-6 py-5 border-b border-gray-200">
+            <div class="bg-white shadow rounded-lg flex flex-col min-h-0 config-section">
+                <div class="px-6 py-5 border-b border-gray-200 flex-shrink-0">
                     <h2 class="text-xl font-semibold text-gray-900">
                         <span class="material-icons mr-2 align-middle">settings</span>
                         Simulation Configuration
                     </h2>
                 </div>
-                <div class="p-6">
+                <div class="p-6 overflow-y-auto flex-1 min-h-0 scroll-container">
                     <form id="config-form">
                         <!-- Simulation Settings -->
                         <div class="mb-6">
@@ -76,16 +131,29 @@
                                 </div>
                                 
                                 <div>
-                                    <label class="block text-sm font-medium text-gray-700 mb-2">Discretionary Goods Prices ($)</label>
-                                    <div class="grid grid-cols-2 gap-3">
+                                    <div class="flex justify-between items-center mb-2">
+                                        <label class="block text-sm font-medium text-gray-700">Discretionary Goods Prices ($)</label>
+                                        <button type="button" onclick="addDiscretionaryGood()" 
+                                                class="bg-green-600 hover:bg-green-700 text-white text-xs font-medium py-1 px-2 rounded transition duration-150">
+                                            <span class="material-icons mr-1 text-xs">add</span>
+                                            Add Good
+                                        </button>
+                                    </div>
+                                    <div id="discretionary-goods-container" class="space-y-2">
                                         {% for good, price in config.economics.discretionary_goods.items() %}
-                                        <div>
-                                            <label for="good-{{ good }}" class="block text-xs font-medium text-gray-600">
-                                                {{ good.title() }}
-                                            </label>
-                                            <input type="number" id="good-{{ good }}" name="good-{{ good }}" 
-                                                   value="{{ price }}" step="0.01" min="0"
-                                                   class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm">
+                                        <div class="discretionary-good-item flex gap-2">
+                                            <div class="flex-1">
+                                                <input type="text" value="{{ good }}" placeholder="Good name" 
+                                                       class="discretionary-good-name block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm">
+                                            </div>
+                                            <div class="flex-1">
+                                                <input type="number" value="{{ price }}" step="0.01" min="0" placeholder="Price"
+                                                       class="discretionary-good-price block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm">
+                                            </div>
+                                            <button type="button" onclick="removeDiscretionaryGood(this)" 
+                                                    class="text-red-600 hover:text-red-900 bg-red-100 hover:bg-red-200 p-1 rounded text-xs">
+                                                <span class="material-icons text-sm">delete</span>
+                                            </button>
                                         </div>
                                         {% endfor %}
                                     </div>
@@ -132,8 +200,8 @@
             </div>
 
             <!-- Agents Section -->
-            <div class="bg-white shadow rounded-lg">
-                <div class="px-6 py-5 border-b border-gray-200">
+            <div class="bg-white shadow rounded-lg flex flex-col min-h-0 agents-section">
+                <div class="px-6 py-5 border-b border-gray-200 flex-shrink-0">
                     <div class="flex justify-between items-center">
                         <h2 class="text-xl font-semibold text-gray-900">
                             <span class="material-icons mr-2 align-middle">people</span>
@@ -146,8 +214,9 @@
                         </button>
                     </div>
                 </div>
-                <div class="p-6">
-                    <div class="space-y-4" id="agents-container">
+                <div class="p-6 flex flex-col flex-1 min-h-0">
+                    <div class="overflow-y-auto flex-1 scroll-container" id="agents-scroll-container">
+                        <div class="space-y-4" id="agents-container">
                         {% for agent in agents %}
                         <div class="agent-card border border-gray-200 rounded-lg p-4" data-agent-index="{{ loop.index0 }}">
                             <div class="grid grid-cols-2 gap-3">
@@ -191,10 +260,11 @@
                             </div>
                         </div>
                         {% endfor %}
+                        </div>
                     </div>
 
                     <!-- Save Agents Button -->
-                    <div class="mt-6 pt-6 border-t">
+                    <div class="mt-6 pt-6 border-t flex-shrink-0">
                         <button onclick="saveAgents()" 
                                 class="w-full bg-purple-600 hover:bg-purple-700 text-white font-medium py-2 px-4 rounded-md transition duration-150">
                             Save Agents
@@ -263,6 +333,18 @@
             e.preventDefault();
             
             const formData = new FormData(e.target);
+            
+            // Collect discretionary goods dynamically
+            const discretionaryGoods = {};
+            const goodItems = document.querySelectorAll('.discretionary-good-item');
+            goodItems.forEach(item => {
+                const name = item.querySelector('.discretionary-good-name').value;
+                const price = parseFloat(item.querySelector('.discretionary-good-price').value);
+                if (name.trim() && !isNaN(price)) {
+                    discretionaryGoods[name.trim()] = price;
+                }
+            });
+            
             const configData = {
                 simulation: {
                     periods: parseInt(formData.get('periods')),
@@ -276,10 +358,7 @@
                 },
                 economics: {
                     interest_rate: parseFloat(formData.get('interest-rate')),
-                    discretionary_goods: {
-                        entertainment: parseFloat(formData.get('good-entertainment')),
-                        travel: parseFloat(formData.get('good-travel'))
-                    },
+                    discretionary_goods: discretionaryGoods,
                     fixed_costs: ["housing", "insurance"],
                     variable_costs: ["healthcare", "repair"]
                 },
@@ -353,6 +432,18 @@
             `;
             
             container.appendChild(newAgentDiv);
+            
+            // Scroll to the new agent
+            const scrollContainer = document.getElementById('agents-scroll-container');
+            setTimeout(() => {
+                newAgentDiv.scrollIntoView({ 
+                    behavior: 'smooth', 
+                    block: 'nearest',
+                    inline: 'nearest'
+                });
+                // Focus on the agent type input
+                newAgentDiv.querySelector('.agent-type').focus();
+            }, 100);
         }
 
         function deleteAgent(button) {
@@ -401,6 +492,41 @@
                 }
             } catch (error) {
                 showNotification('Error saving agents: ' + error.message, 'error');
+            }
+        }
+
+        // Discretionary goods management functions
+        function addDiscretionaryGood() {
+            const container = document.getElementById('discretionary-goods-container');
+            
+            const newGoodDiv = document.createElement('div');
+            newGoodDiv.className = 'discretionary-good-item flex gap-2';
+            newGoodDiv.innerHTML = `
+                <div class="flex-1">
+                    <input type="text" value="" placeholder="Good name" 
+                           class="discretionary-good-name block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm">
+                </div>
+                <div class="flex-1">
+                    <input type="number" value="10.00" step="0.01" min="0" placeholder="Price"
+                           class="discretionary-good-price block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm">
+                </div>
+                <button type="button" onclick="removeDiscretionaryGood(this)" 
+                        class="text-red-600 hover:text-red-900 bg-red-100 hover:bg-red-200 p-1 rounded text-xs">
+                    <span class="material-icons text-sm">delete</span>
+                </button>
+            `;
+            
+            container.appendChild(newGoodDiv);
+            
+            // Focus on the new good name input
+            setTimeout(() => {
+                newGoodDiv.querySelector('.discretionary-good-name').focus();
+            }, 100);
+        }
+
+        function removeDiscretionaryGood(button) {
+            if (confirm('Are you sure you want to remove this discretionary good?')) {
+                button.closest('.discretionary-good-item').remove();
             }
         }
     </script>
