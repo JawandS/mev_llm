@@ -212,8 +212,19 @@ def validate_config(config: Dict[str, Any]) -> None:
     if config['simulation']['periods'] <= 0:
         raise ValueError("periods must be positive")
     
-    if config['simulation']['agents_per_type'] <= 0:
-        raise ValueError("agents_per_type must be positive")
+    # Validate agents_per_type (supports both int and dict formats)
+    agents_per_type = config['simulation']['agents_per_type']
+    if isinstance(agents_per_type, int):
+        if agents_per_type <= 0:
+            raise ValueError("agents_per_type must be positive")
+    elif isinstance(agents_per_type, dict):
+        if not agents_per_type:
+            raise ValueError("agents_per_type dictionary cannot be empty")
+        for agent_type, count in agents_per_type.items():
+            if not isinstance(count, int) or count < 0:
+                raise ValueError(f"agents_per_type[{agent_type}] must be a non-negative integer")
+    else:
+        raise ValueError("agents_per_type must be either an integer or a dictionary")
     
     if not (0 <= config['economics']['interest_rate'] <= 1):
         raise ValueError("interest_rate must be between 0 and 1")

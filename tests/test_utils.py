@@ -162,6 +162,65 @@ class TestConfigValidation:
         with pytest.raises(ValueError, match="interest_rate must be between 0 and 1"):
             validate_config(config)
 
+    def test_validate_config_agents_per_type_formats(self):
+        """Test validation of different agents_per_type formats."""
+        base_config = {
+            "simulation": {"periods": 12},
+            "economics": {"interest_rate": 0.04, "luxury_cost_per_unit": 12.0},
+            "llm": {"model_name": "gemini-2.0-flash-exp", "temperature": 0.7, "max_tokens": 1000}
+        }
+        
+        # Test valid integer format
+        config = base_config.copy()
+        config["simulation"]["agents_per_type"] = 2
+        validate_config(config)  # Should not raise
+        
+        # Test valid dictionary format
+        config = base_config.copy()
+        config["simulation"]["agents_per_type"] = {"young_professional": 2, "family": 1}
+        validate_config(config)  # Should not raise
+        
+        # Test negative integer
+        config = base_config.copy()
+        config["simulation"]["agents_per_type"] = -1
+        with pytest.raises(ValueError, match="agents_per_type must be positive"):
+            validate_config(config)
+        
+        # Test zero integer (should pass)
+        config = base_config.copy()
+        config["simulation"]["agents_per_type"] = 0
+        with pytest.raises(ValueError, match="agents_per_type must be positive"):
+            validate_config(config)
+        
+        # Test empty dictionary
+        config = base_config.copy()
+        config["simulation"]["agents_per_type"] = {}
+        with pytest.raises(ValueError, match="agents_per_type dictionary cannot be empty"):
+            validate_config(config)
+        
+        # Test dictionary with negative values
+        config = base_config.copy()
+        config["simulation"]["agents_per_type"] = {"young_professional": -1}
+        with pytest.raises(ValueError, match="agents_per_type\\[young_professional\\] must be a non-negative integer"):
+            validate_config(config)
+        
+        # Test dictionary with non-integer values
+        config = base_config.copy()
+        config["simulation"]["agents_per_type"] = {"young_professional": "invalid"}
+        with pytest.raises(ValueError, match="agents_per_type\\[young_professional\\] must be a non-negative integer"):
+            validate_config(config)
+        
+        # Test dictionary with zero values (should pass)
+        config = base_config.copy()
+        config["simulation"]["agents_per_type"] = {"young_professional": 0, "family": 1}
+        validate_config(config)  # Should not raise
+        
+        # Test invalid type (neither int nor dict)
+        config = base_config.copy()
+        config["simulation"]["agents_per_type"] = "invalid"
+        with pytest.raises(ValueError, match="agents_per_type must be either an integer or a dictionary"):
+            validate_config(config)
+
 
 class TestResultsHandling:
     """Test results directory and file handling."""

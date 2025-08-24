@@ -57,13 +57,21 @@ class Simulation:
         self.logger.info(f"Simulation configured for {self.num_periods} periods")
         self.logger.info(f"Interest rate: {self.interest_rate:.1%}")
         self.logger.info(f"Luxury cost per unit: ${self.luxury_cost_per_unit:.2f}")
+        
+        # Log agent configuration
+        if isinstance(self.agents_per_type, dict):
+            for agent_type, count in self.agents_per_type.items():
+                self.logger.info(f"Agents per type - {agent_type}: {count}")
+        else:
+            self.logger.info(f"Agents per type: {self.agents_per_type} (all types)")
     
     def create_agents(self) -> None:
         """
         Create agents based on the configuration.
         
         Creates the specified number of agents for each agent type
-        defined in agents.csv.
+        defined in agents.csv. Supports both legacy single number format
+        and new dictionary format for agents_per_type.
         """
         agent_id = 0
         
@@ -73,8 +81,16 @@ class Simulation:
             fixed_cost = agent_type_row['fixed_cost']
             variable_cost = agent_type_row['variable_cost']
             
+            # Determine number of agents for this type
+            if isinstance(self.agents_per_type, dict):
+                # New dictionary format - get count for this specific type
+                num_agents = self.agents_per_type.get(agent_type, 0)
+            else:
+                # Legacy format - same number for all types
+                num_agents = self.agents_per_type
+            
             # Create multiple agents of this type
-            for i in range(self.agents_per_type):
+            for i in range(num_agents):
                 agent = Agent(
                     agent_id=agent_id,
                     agent_type=agent_type,

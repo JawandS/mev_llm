@@ -33,9 +33,13 @@ class TestSimulation(unittest.TestCase):
         self.periods = self.config['simulation']['periods']
         self.agents_per_type = self.config['simulation']['agents_per_type']
         
+        # For testing, use a simple integer format for the original tests
+        # to maintain backward compatibility testing
+        self.simple_agents_per_type = 1
+        
         # Mock configuration data that mimics actual config structure
         self.mock_config = {
-            "simulation": {"periods": self.periods, "agents_per_type": self.agents_per_type},
+            "simulation": {"periods": self.periods, "agents_per_type": self.simple_agents_per_type},
             "economics": {"interest_rate": self.interest_rate, "luxury_cost_per_unit": self.luxury_cost},
             "llm": {"model_name": "gemini-2.0-flash-exp", "temperature": 0.7, "max_tokens": 1000}
         }
@@ -62,7 +66,7 @@ class TestSimulation(unittest.TestCase):
         
         # Verify initialization
         assert simulation.num_periods == self.periods
-        assert simulation.agents_per_type == self.agents_per_type
+        assert simulation.agents_per_type == self.simple_agents_per_type
         assert simulation.interest_rate == self.interest_rate
         assert simulation.luxury_cost_per_unit == self.luxury_cost
         assert len(simulation.agents) == 0  # No agents created yet
@@ -107,7 +111,7 @@ class TestSimulation(unittest.TestCase):
         
         # Verify correct number of agents created
         # agent_types × agents_per_type = total agents
-        expected_total_agents = len(self.mock_agent_types) * self.agents_per_type
+        expected_total_agents = len(self.mock_agent_types) * self.simple_agents_per_type
         assert len(simulation.agents) == expected_total_agents
         assert mock_agent_class.call_count == expected_total_agents
         
@@ -118,7 +122,7 @@ class TestSimulation(unittest.TestCase):
         created_agent_types = [call[1]['agent_type'] for call in calls]
         expected_agent_types = []
         for _, row in self.mock_agent_types.iterrows():
-            for _ in range(self.agents_per_type):
+            for _ in range(self.simple_agents_per_type):
                 expected_agent_types.append(row['agent_type'])
         
         assert created_agent_types == expected_agent_types
@@ -128,6 +132,69 @@ class TestSimulation(unittest.TestCase):
         assert calls[1][1]['agent_id'] == 1
         assert calls[2][1]['agent_id'] == 2
         assert calls[3][1]['agent_id'] == 3
+
+    @patch('src.simulation.load_agent_types')
+    @patch('src.simulation.load_config')
+    @patch('src.simulation.validate_config')
+    @patch('src.simulation.setup_logging')
+    @patch('src.simulation.Agent')
+    def test_create_agents_dictionary_format(self, mock_agent_class, mock_setup_logging, 
+                                           mock_validate, mock_load_config, mock_load_agent_types):
+        """Test agent creation with dictionary format for agents_per_type."""
+        # Setup mocks with dictionary format
+        mock_logger = Mock()
+        mock_setup_logging.return_value = mock_logger
+        
+        # Create a config with dictionary format for agents_per_type
+        dict_config = {
+            "simulation": {
+                "periods": self.periods, 
+                "agents_per_type": {
+                    "young_professional": 2,
+                    "family": 1,
+                    "retiree": 0,  # Zero agents for this type
+                    "student": 3
+                }
+            },
+            "economics": {"interest_rate": self.interest_rate, "luxury_cost_per_unit": self.luxury_cost},
+            "llm": {"model_name": "gemini-2.0-flash-exp", "temperature": 0.7, "max_tokens": 1000}
+        }
+        
+        mock_load_config.return_value = dict_config
+        mock_load_agent_types.return_value = self.mock_agent_types
+        
+        # Mock Agent constructor
+        mock_agents = []
+        def create_mock_agent(*args, **kwargs):
+            mock_agent = Mock()
+            mock_agent.agent_id = kwargs.get('agent_id', len(mock_agents))
+            mock_agent.agent_type = kwargs.get('agent_type', 'test')
+            mock_agents.append(mock_agent)
+            return mock_agent
+        
+        mock_agent_class.side_effect = create_mock_agent
+        
+        # Create simulation and agents
+        simulation = Simulation()
+        simulation.create_agents()
+        
+        # Verify correct number of agents created (2 + 1 + 0 + 3 = 6, but only for types that exist)
+        # Note: retiree and student might not be in our mock_agent_types, so let's calculate based on what's actually there
+        expected_total = 0
+        for _, row in self.mock_agent_types.iterrows():
+            agent_type = row['agent_type']
+            if agent_type in dict_config["simulation"]["agents_per_type"]:
+                expected_total += dict_config["simulation"]["agents_per_type"][agent_type]
+        
+        assert len(simulation.agents) == expected_total
+        assert mock_agent_class.call_count == expected_total
+        
+        # Verify that agent types with zero count don't get created
+        calls = mock_agent_class.call_args_list
+        created_agent_types = [call[1]['agent_type'] for call in calls]
+        
+        # Ensure no agents of types with 0 count were created
+        assert 'retiree' not in created_agent_types or dict_config["simulation"]["agents_per_type"].get('retiree', 1) > 0
     
     @patch('src.simulation.load_agent_types')
     @patch('src.simulation.load_config')

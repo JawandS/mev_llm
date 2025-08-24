@@ -1,7 +1,13 @@
 {
   "simulation": {
     "periods": 52,
-    "agents_per_type": 1
+    "agents_per_type": {
+      "young_professional": 1,
+      "family": 1,
+      "retiree": 0,
+      "student": 0,
+      "low_income": 0
+    }
   },
   "economics": {
     "interest_rate": 0.04,
