@@ -11,7 +11,18 @@
   },
   "economics": {
     "interest_rate": 0.04,
-    "luxury_cost_per_unit": 12.00
+    "discretionary_goods": {
+      "entertainment": 8.00,
+      "travel": 15.00
+    },
+    "fixed_costs": [
+      "housing",
+      "insurance"
+    ],
+    "variable_costs": [
+      "healthcare",
+      "repair"
+    ]
   },
   "llm": {
     "model_name": "qwen2.5:0.5b",

@@ -42,21 +42,27 @@ class Agent:
         agent_id: int, 
         agent_type: str, 
         income: float, 
-        fixed_cost: float, 
-        variable_cost: float,
+        housing: float, 
+        insurance: float,
+        healthcare: float,
+        repair: float,
+        discretionary_goods: Dict[str, float],
         model_name: str = "llama3.2",
         temperature: float = 0.7,
         max_tokens: int = 1000
     ):
         """
-        Initialize an economic agent.
+        Initialize an economic agent with granular cost structure.
         
         Args:
             agent_id: Unique identifier for this agent
             agent_type: Type of agent (e.g., 'young_professional', 'family')
             income: Weekly income
-            fixed_cost: Fixed weekly expenses
-            variable_cost: Maximum variable weekly expenses
+            housing: Fixed weekly housing expenses
+            insurance: Fixed weekly insurance expenses
+            healthcare: Maximum variable weekly healthcare expenses
+            repair: Maximum variable weekly repair expenses
+            discretionary_goods: Dictionary of discretionary goods and their prices
             model_name: Name of the LLM model to use
             temperature: LLM temperature for response variability
             max_tokens: Maximum tokens for LLM responses
@@ -64,13 +70,22 @@ class Agent:
         self.agent_id = agent_id
         self.agent_type = agent_type
         self.income = income
-        self.fixed_cost = fixed_cost
-        self.variable_cost = variable_cost
+        self.housing = housing
+        self.insurance = insurance
+        self.healthcare = healthcare
+        self.repair = repair
+        self.discretionary_goods = discretionary_goods
+        
+        # Calculate total fixed and variable costs for compatibility
+        self.fixed_cost = housing + insurance
+        self.variable_cost = healthcare + repair
         
         # Financial state
         self.savings = 0.0
         self.period = 0
-        self.actual_variable_cost = 0.0  # Initialize to 0
+        self.actual_healthcare_cost = 0.0
+        self.actual_repair_cost = 0.0
+        self.actual_variable_cost = 0.0  # Total of healthcare + repair
         
         # Chat history for this agent
         self.chat_history: List[Dict[str, Any]] = []
@@ -89,39 +104,43 @@ class Agent:
         Returns:
             Net income (can be negative)
         """
-        self.actual_variable_cost = random.uniform(0, self.variable_cost)
+        # Calculate actual variable costs as random values up to the maximum
+        self.actual_healthcare_cost = random.uniform(0, self.healthcare)
+        self.actual_repair_cost = random.uniform(0, self.repair)
+        self.actual_variable_cost = self.actual_healthcare_cost + self.actual_repair_cost
+        
         net_income = self.income - self.fixed_cost - self.actual_variable_cost
         
         self.logger.debug(
             f"Period {self.period}: Income=${self.income:.2f}, "
-            f"Fixed=${self.fixed_cost:.2f}, Variable=${self.actual_variable_cost:.2f}, "
+            f"Housing=${self.housing:.2f}, Insurance=${self.insurance:.2f}, "
+            f"Healthcare=${self.actual_healthcare_cost:.2f}, Repair=${self.actual_repair_cost:.2f}, "
             f"Net=${net_income:.2f}"
         )
         
         return net_income, self.actual_variable_cost
     
-    def decide_luxury_purchases(
+    def decide_discretionary_purchases(
         self, 
-        luxury_cost_per_unit: float, 
         interest_rate: float
-    ) -> int:
+    ) -> Dict[str, int]:
         """
-        Use LLM to make rational luxury purchase decision based on economic optimization.
+        Use LLM to make rational discretionary purchase decisions based on economic optimization.
         
         The LLM is always consulted to maintain complete economic information,
         even when financially constrained, to enable learning and realistic modeling.
         
-        If the initial response cannot be parsed, retry with a simplified prompt
-        to ensure data integrity without fallback values.
-        
         Args:
-            luxury_cost_per_unit: Cost per unit of luxury goods
             interest_rate: Annual interest rate (opportunity cost)
             
         Returns:
-            Number of luxury units to purchase (optimal choice)
+            Dictionary mapping goods to quantities to purchase
         """
-        max_affordable = max(0, int(self.savings // luxury_cost_per_unit)) if luxury_cost_per_unit > 0 else 0
+        # Calculate maximum affordable for each good
+        max_affordable = {}
+        for good, price in self.discretionary_goods.items():
+            max_affordable[good] = max(0, int(self.savings // price)) if price > 0 else 0
+        
         max_retries = 3
         
         for attempt in range(max_retries):
@@ -129,11 +148,11 @@ class Agent:
                 # Choose prompt type based on attempt number
                 if attempt == 0:
                     # First attempt: Full economic analysis prompt
-                    prompt = self._create_luxury_prompt(luxury_cost_per_unit, interest_rate)
+                    prompt = self._create_discretionary_prompt(interest_rate)
                     prompt_type = "full_economic_analysis"
                 else:
                     # Retry attempts: Simplified numeric-only prompt
-                    prompt = self._create_simplified_prompt(luxury_cost_per_unit, max_affordable, attempt)
+                    prompt = self._create_simplified_discretionary_prompt(max_affordable, attempt)
                     prompt_type = f"simplified_retry_{attempt}"
                 
                 # Call Ollama API for rational decision-making
@@ -144,7 +163,7 @@ class Agent:
                         "prompt": prompt,
                         "options": {
                             "temperature": 0.1 if attempt > 0 else self.temperature,  # Lower temperature for retries
-                            "num_predict": 50 if attempt > 0 else self.max_tokens  # Shorter responses for retries
+                            "num_predict": 100 if attempt > 0 else self.max_tokens  # Shorter responses for retries
                         },
                         "stream": False
                     },
@@ -155,11 +174,11 @@ class Agent:
                 response_text = data.get("response", "")
                 
                 # Try to parse the response
-                luxury_quantity, parse_success = self._parse_luxury_response_with_validation(response_text, max_affordable)
+                purchases, success = self._parse_discretionary_response(response_text, max_affordable)
                 
-                if parse_success:
+                if success:
                     # Successful parse - log and return result
-                    can_afford_any = self.savings >= luxury_cost_per_unit
+                    can_afford_any = any(self.savings >= price for price in self.discretionary_goods.values())
                     decision_type = "llm_rational_choice" if can_afford_any else "llm_constrained_choice"
                     if attempt > 0:
                         decision_type += f"_retry_{attempt}"
@@ -168,7 +187,7 @@ class Agent:
                         "period": self.period,
                         "prompt": prompt,
                         "response": response_text,
-                        "parsed_quantity": luxury_quantity,
+                        "parsed_purchases": purchases,
                         "timestamp": str(self.period),
                         "decision_type": decision_type,
                         "prompt_type": prompt_type,
@@ -177,17 +196,7 @@ class Agent:
                     }
                     self.chat_history.append(interaction)
                     
-                    # Apply budget constraint if necessary
-                    if luxury_quantity > max_affordable:
-                        original_quantity = luxury_quantity
-                        luxury_quantity = max_affordable
-                        self.logger.info(
-                            f"Agent {self.agent_id} chose {original_quantity} units but constrained to "
-                            f"affordable maximum {max_affordable} (savings: ${self.savings:.2f})"
-                        )
-                        interaction["constraint_applied"] = f"Reduced from {original_quantity} to {max_affordable} (budget limit)"
-                    
-                    return luxury_quantity
+                    return purchases
                 else:
                     # Parse failed - log and retry
                     self.logger.warning(f"Attempt {attempt + 1}: Could not parse LLM response: '{response_text}'")
@@ -215,164 +224,60 @@ class Agent:
         # Raise exception to halt simulation and preserve data integrity
         raise RuntimeError(error_msg)
     
-    def _create_luxury_prompt(self, luxury_cost_per_unit: float, interest_rate: float) -> str:
+    def _create_discretionary_prompt(self, interest_rate: float) -> str:
         """
-        Create a prompt for the LLM to decide on luxury purchases.
+        Create a prompt for the LLM to decide on entertainment and travel purchases.
         
         Args:
-            luxury_cost_per_unit: Cost per unit of luxury goods
             interest_rate: Current interest rate
             
         Returns:
             Formatted prompt string
         """
-        # Calculate key economic metrics for decision-making
-        max_affordable = max(0, int(self.savings // luxury_cost_per_unit)) if luxury_cost_per_unit > 0 else 0
-        monthly_interest_rate = interest_rate / 12  # Convert annual to monthly rate
+        # Calculate maximum affordable for each good
+        max_affordable = {}
+        goods_info = []
+        for good, price in self.discretionary_goods.items():
+            max_affordable[good] = max(0, int(self.savings // price)) if price > 0 else 0
+            goods_info.append(f"{good}: ${price:.2f} per unit (max affordable: {max_affordable[good]})")
         
-        # Calculate what savings would be worth after next monthly interest payment
-        # Interest is applied every 4 periods (monthly)
-        potential_savings_growth = self.savings * (1 + monthly_interest_rate)
+        monthly_interest_rate = interest_rate / 12
         
-        # Calculate expected net income for risk assessment
-        expected_variable_cost = self.variable_cost / 2  # Average of 0 to variable_cost
-        expected_net_income = self.income - self.fixed_cost - expected_variable_cost
+        goods_list = "\n".join([f"- {info}" for info in goods_info])
         
-        # Determine financial constraint status
-        financial_status = ""
-        if max_affordable == 0:
-            if self.savings <= 0:
-                financial_status = "⚠️  FINANCIAL STRESS: You have negative/zero savings and cannot afford any luxury purchases."
-            else:
-                financial_status = f"⚠️  BUDGET CONSTRAINT: Your savings (${self.savings:.2f}) are insufficient for even one luxury item (${luxury_cost_per_unit:.2f})."
-        elif max_affordable == 1:
-            financial_status = f"💰 TIGHT BUDGET: You can afford only {max_affordable} luxury item, requiring careful consideration."
-        elif max_affordable <= 3:
-            financial_status = f"💰 LIMITED OPTIONS: You can afford up to {max_affordable} luxury items - moderate financial flexibility."
-        else:
-            financial_status = f"💰 FINANCIAL FLEXIBILITY: You can afford up to {max_affordable} luxury items - good financial position."
-        
-        # Add savings buffer analysis
-        if self.savings > 0:
-            weeks_of_coverage = self.savings / (self.fixed_cost + expected_variable_cost)
-            if weeks_of_coverage < 2:
-                financial_status += f"\n⚠️  RISK WARNING: Current savings only cover {weeks_of_coverage:.1f} weeks of expenses."
-            elif weeks_of_coverage < 12:
-                financial_status += f"\n⚠️  LOW BUFFER: Current savings cover {weeks_of_coverage:.1f} weeks of expenses (recommended: 12+ weeks)."
-        
-        prompt = f"""You are a rational economic agent managing household finances for a '{self.agent_type}' profile. Your goal is to maximize utility by balancing immediate luxury consumption against future financial security.
+        prompt = f"""You are a {self.agent_type} with ${self.savings:.2f} savings making discretionary spending decisions.
 
-ECONOMIC SITUATION (Period {self.period + 1}):
-Financial Position:
-- Available savings for spending: ${self.savings:.2f}
-- This period's net income: ${self.income - self.fixed_cost - self.actual_variable_cost:.2f}
-  (Income ${self.income:.2f} - Fixed costs ${self.fixed_cost:.2f} - Variable costs ${self.actual_variable_cost:.2f})
+AVAILABLE DISCRETIONARY GOODS:
+{goods_list}
 
-{financial_status}
-
-Investment Opportunity:
-- Luxury goods cost: ${luxury_cost_per_unit:.2f} per unit
-- Maximum you can afford: {max_affordable} units
+ECONOMIC CONTEXT:
 - Monthly interest rate: {monthly_interest_rate*100:.3f}% (Annual: {interest_rate*100:.2f}%)
-- If you save instead: ${self.savings:.2f} grows to ${potential_savings_growth:.2f} at next monthly interest payment
+- Current savings grow to ${self.savings * (1 + monthly_interest_rate):.2f} next month if saved
+- This period income after fixed/variable costs: ${self.income - self.fixed_cost - self.actual_variable_cost:.2f}
 
-RATIONAL DECISION FRAMEWORK:
-You must choose how many luxury units to purchase (0 to {max_affordable}) by considering:
+DECISION FRAMEWORK:
+Consider utility maximization vs. opportunity cost of foregone interest earnings.
+Each good provides different satisfaction:
+- Entertainment: Social experiences, relaxation, cultural activities  
+- Travel: Exploration, adventure, new experiences
 
-1. UTILITY MAXIMIZATION: Each luxury unit provides immediate satisfaction
-2. RISK MANAGEMENT: Maintaining savings provides security against:
-   - Future income volatility (variable costs range ${0:.0f}-${self.variable_cost:.2f})
-   - Unexpected expenses or economic downturns
-   - Building recommended emergency fund (12+ weeks expenses)
+Your agent type ({self.agent_type}) should influence preferences and risk tolerance.
 
-3. OPPORTUNITY COST: Money spent on luxury cannot earn {monthly_interest_rate*100:.3f}% monthly interest
+CRITICAL: Respond with ONLY a JSON object showing quantities for each good.
+Format: {{"entertainment": 0, "travel": 0}}
+Replace 0 with your chosen quantities (must be within affordable limits).
 
-4. AGENT PROFILE CONSIDERATIONS:
-   - {self.agent_type} households typically prioritize {'financial stability and family security' if self.agent_type == 'family' else 'building long-term wealth while enjoying some current consumption' if self.agent_type == 'young_professional' else 'preserving retirement savings and conservative spending' if self.agent_type == 'retiree' else 'minimizing expenses while building emergency funds' if self.agent_type == 'student' else 'essential expenses first, very cautious luxury spending' if self.agent_type == 'low_income' else 'moderate spending with financial security'}
-
-FINANCIAL CONSTRAINT AWARENESS:
-- Even if you cannot afford luxury now, this experience teaches you about financial planning
-- Consider how your current financial constraints might influence future earning/saving strategies
-- Recognize the value of delayed gratification when resources are limited
-
-DECISION RULE:
-As a rational agent, purchase luxury goods only when the immediate utility exceeds the combined value of:
-- Interest earnings foregone
-- Risk reduction from maintaining savings buffer
-- Future consumption opportunities
-
-Choose the optimal number of luxury units (0-{max_affordable}) that maximizes your expected utility while maintaining appropriate financial security for your profile.
-
-CRITICAL: Your response must contain ONLY a single number from 0 to {max_affordable}. Do not include any words, explanations, punctuation, or formatting. Examples of correct responses: 0, 1, 2, 3. Examples of incorrect responses: "I choose 2", "0 units", "2.", "The answer is 2".
+Examples:
+{{"entertainment": 2, "travel": 1}}
+{{"entertainment": 0, "travel": 3}}
+{{"entertainment": 1, "travel": 0}}
 
 Your decision:"""
         
         return prompt
     
-    def _create_simplified_prompt(self, luxury_cost_per_unit: float, max_affordable: int, attempt: int) -> str:
-        """
-        Create a simplified prompt for retry attempts when the main prompt fails.
-        
-        Args:
-            luxury_cost_per_unit: Cost per unit of luxury goods
-            max_affordable: Maximum number of units the agent can afford
-            attempt: Retry attempt number (1, 2, etc.)
-            
-        Returns:
-            Simplified prompt focused only on getting a number
-        """
-        if attempt == 1:
-            # First retry: Clear and direct
-            return f"""RETRY: You must respond with ONLY a number.
-
-Available savings: ${self.savings:.2f}
-Item cost: ${luxury_cost_per_unit:.2f}
-Maximum affordable: {max_affordable}
-
-How many items to buy? Enter only a number from 0 to {max_affordable}.
-
-Examples of correct responses: 0, 1, 2, 3
-Examples of incorrect responses: "I choose 2", "0 items", "two"
-
-Answer:"""
-
-        else:
-            # Second retry: Ultra-minimal
-            return f"""Enter a number from 0 to {max_affordable}:"""
-    
-    def _parse_luxury_response_with_validation(self, response_text: str, max_affordable: int) -> Tuple[int, bool]:
-        """
-        Parse LLM response with strict validation - only accept clean numbers.
-        
-        Args:
-            response_text: Raw response from LLM
-            max_affordable: Maximum affordable quantity for validation
-            
-        Returns:
-            Tuple of (quantity, success_flag)
-        """
-        if not response_text:
-            return 0, False
-            
-        # Clean the response - remove whitespace only
-        cleaned_response = response_text.strip()
-        
-        # Strict validation: must be a pure number with no other text
-        if cleaned_response.isdigit():
-            quantity = int(cleaned_response)
-            # Ensure it's within valid range
-            if 0 <= quantity <= max_affordable:
-                return quantity, True
-            else:
-                # Number is outside valid range - reprompt
-                return 0, False
-        
-        # Any response that isn't a pure number should trigger a reprompt
-        return 0, False
-    
     def process_period(
         self, 
-        luxury_cost_per_unit: float, 
         interest_rate: float,
         current_period: int = 0
     ) -> List[Dict[str, Any]]:
@@ -381,12 +286,11 @@ Answer:"""
         
         1. Receive income and pay mandatory expenses (fixed + variable costs)
         2. Calculate available savings for discretionary spending
-        3. Make rational luxury purchase decision via LLM
-        4. Execute purchase if affordable
+        3. Make rational discretionary purchase decisions via LLM
+        4. Execute purchases if affordable
         5. Apply interest to remaining savings/debt (monthly, every 4 periods)
         
         Args:
-            luxury_cost_per_unit: Cost per unit of luxury goods
             interest_rate: Annual interest rate
             current_period: Current simulation period (0-indexed)
             
@@ -435,37 +339,55 @@ Answer:"""
             'amount': self.actual_variable_cost
         })
         
-        # STEP 2: RATIONAL LUXURY CONSUMPTION DECISION
+        # STEP 2: RATIONAL DISCRETIONARY CONSUMPTION DECISION
         # Agent makes optimal decision based on current savings, opportunity cost, and risk preferences
-        luxury_units = self.decide_luxury_purchases(luxury_cost_per_unit, interest_rate)
+        purchases = self.decide_discretionary_purchases(interest_rate)
         
-        # STEP 3: EXECUTE PURCHASE (if affordable and rational)
-        total_luxury_cost = luxury_units * luxury_cost_per_unit
-        if luxury_units > 0:
-            if total_luxury_cost <= self.savings:
-                self.savings -= total_luxury_cost
+        # STEP 3: EXECUTE PURCHASES (if affordable and rational)
+        total_discretionary_cost = 0
+        purchase_costs = {}
+        
+        # Calculate total cost and individual costs
+        for good, quantity in purchases.items():
+            if quantity > 0:
+                cost = quantity * self.discretionary_goods[good]
+                purchase_costs[good] = cost
+                total_discretionary_cost += cost
+        
+        if total_discretionary_cost > 0:
+            if total_discretionary_cost <= self.savings:
+                self.savings -= total_discretionary_cost
                 
-                transactions.append({
-                    'period_num': self.period,
-                    'agent_id': self.agent_id,
-                    'agent_type': self.agent_type,
-                    'purchase_type': 'luxury',
-                    'purchase_quantity': luxury_units,
-                    'required': False,
-                    'amount': total_luxury_cost
-                })
+                # Create transaction record for each good purchased
+                for good, quantity in purchases.items():
+                    if quantity > 0:
+                        transactions.append({
+                            'period_num': self.period,
+                            'agent_id': self.agent_id,
+                            'agent_type': self.agent_type,
+                            'purchase_type': good,
+                            'purchase_quantity': quantity,
+                            'required': False,
+                            'amount': purchase_costs[good]
+                        })
+                
+                purchase_summary = ", ".join([
+                    f"{quantity} {good} units (${purchase_costs[good]:.2f})"
+                    for good, quantity in purchases.items() if quantity > 0
+                ])
                 
                 self.logger.info(
-                    f"Agent {self.agent_id} rationally purchased {luxury_units} luxury units "
-                    f"for ${total_luxury_cost:.2f}. Remaining savings: ${self.savings:.2f}"
+                    f"Agent {self.agent_id} rationally purchased {purchase_summary}. "
+                    f"Total cost: ${total_discretionary_cost:.2f}. Remaining savings: ${self.savings:.2f}"
                 )
             else:
                 self.logger.warning(
-                    f"Agent {self.agent_id} attempted irrational purchase: {luxury_units} units "
-                    f"(cost: ${total_luxury_cost:.2f} > savings: ${self.savings:.2f}). Purchase denied."
+                    f"Agent {self.agent_id} attempted irrational purchase: total cost ${total_discretionary_cost:.2f} "
+                    f"> savings ${self.savings:.2f}. Purchase denied."
                 )
                 # Override irrational decision
-                luxury_units = 0
+                purchases = {good: 0 for good in purchases}
+                total_discretionary_cost = 0
         
         # STEP 4: APPLY INTEREST TO REMAINING SAVINGS/DEBT (MONTHLY)
         # Interest is applied every 4 periods (monthly) to both savings and debt
@@ -484,7 +406,7 @@ Answer:"""
         self.logger.info(
             f"Period {self.period + 1} complete for Agent {self.agent_id}: "
             f"Savings ${period_start_savings:.2f} -> ${self.savings:.2f} "
-            f"(Net income: ${net_income:.2f}, Luxury spending: ${total_luxury_cost:.2f}, "
+            f"(Net income: ${net_income:.2f}, Discretionary spending: ${total_discretionary_cost:.2f}, "
             f"Interest {('earned' if interest_earned >= 0 else 'charged')}: ${abs(interest_earned):.2f})"
         )
         
@@ -518,3 +440,102 @@ Answer:"""
             List of chat interactions
         """
         return self.chat_history.copy()
+    
+    def _parse_discretionary_response(self, response_text: str, max_affordable: Dict[str, int]) -> Tuple[Dict[str, int], bool]:
+        """
+        Parse the LLM response for discretionary purchases.
+        
+        Args:
+            response_text: Raw response from LLM
+            max_affordable: Dictionary of maximum affordable quantities per good
+            
+        Returns:
+            Tuple of (purchases_dict, success)
+        """
+        try:
+            import json
+            import re
+            
+            # Clean up the response text
+            response_text = response_text.strip()
+            
+            # Try to extract JSON from the response
+            # Look for JSON-like pattern
+            json_match = re.search(r'\{[^}]*\}', response_text)
+            if json_match:
+                json_str = json_match.group()
+                try:
+                    purchases = json.loads(json_str)
+                    
+                    # Validate the purchases
+                    if isinstance(purchases, dict):
+                        valid_purchases = {}
+                        for good, quantity in purchases.items():
+                            if good in max_affordable:
+                                try:
+                                    qty = int(quantity)
+                                    if 0 <= qty <= max_affordable[good]:
+                                        valid_purchases[good] = qty
+                                    else:
+                                        valid_purchases[good] = min(max(0, qty), max_affordable[good])
+                                except (ValueError, TypeError):
+                                    valid_purchases[good] = 0
+                        
+                        # Ensure all goods are represented
+                        for good in max_affordable:
+                            if good not in valid_purchases:
+                                valid_purchases[good] = 0
+                        
+                        return valid_purchases, True
+                        
+                except json.JSONDecodeError:
+                    pass
+            
+            # Fallback: try to parse as comma-separated values (legacy format)
+            if ',' in response_text:
+                parts = response_text.split(',')
+                if len(parts) >= 2:
+                    try:
+                        entertainment_num = int(parts[0].strip())
+                        travel_num = int(parts[1].strip())
+                        
+                        purchases = {
+                            'entertainment': min(max(0, entertainment_num), max_affordable.get('entertainment', 0)),
+                            'travel': min(max(0, travel_num), max_affordable.get('travel', 0))
+                        }
+                        return purchases, True
+                    except ValueError:
+                        pass
+            
+            # Default fallback
+            return {good: 0 for good in max_affordable}, False
+            
+        except Exception:
+            return {good: 0 for good in max_affordable}, False
+
+    def _create_simplified_discretionary_prompt(self, max_affordable: Dict[str, int], attempt: int) -> str:
+        """
+        Create a simplified prompt for retry attempts when the main prompt fails.
+        
+        Args:
+            max_affordable: Dictionary of maximum affordable quantities per good
+            attempt: Current attempt number
+            
+        Returns:
+            Simplified prompt string
+        """
+        goods_info = []
+        for good, price in self.discretionary_goods.items():
+            max_qty = max_affordable.get(good, 0)
+            goods_info.append(f"{good.title()} costs ${price:.2f} per unit (max: {max_qty})")
+        
+        goods_text = "\n".join(goods_info)
+        
+        return f"""You have ${self.savings:.2f} savings.
+{goods_text}
+
+Respond with ONLY a JSON object with your choices:
+{{"entertainment": 0, "travel": 0}}
+
+Replace 0 with your chosen quantities (within limits).
+Your choice:"""

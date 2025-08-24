@@ -1,6 +1,6 @@
-agent_type,income,fixed_cost,variable_cost
-young_professional,1107.00,277.00,139.00
-family,1662.00,416.00,208.00
-retiree,739.00,277.00,139.00
-student,277.00,185.00,92.00
-low_income,416.00,231.00,115.00
+agent_type,income,housing,insurance,healthcare,repair
+young_professional,1107.00,200.00,77.00,100.00,39.00
+family,1662.00,300.00,116.00,150.00,58.00
+retiree,739.00,200.00,77.00,100.00,39.00
+student,277.00,120.00,65.00,70.00,22.00
+low_income,416.00,150.00,81.00,85.00,30.00

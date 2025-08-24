@@ -78,7 +78,7 @@ def load_agent_types() -> pd.DataFrame:
     
     try:
         agents_df = pd.read_csv(agents_path)
-        required_columns = ['agent_type', 'income', 'fixed_cost', 'variable_cost']
+        required_columns = ['agent_type', 'income', 'housing', 'insurance', 'healthcare', 'repair']
         
         if not all(col in agents_df.columns for col in required_columns):
             raise ValueError(f"agents.csv must contain columns: {required_columns}")
@@ -196,7 +196,7 @@ def validate_config(config: Dict[str, Any]) -> None:
     """
     required_keys = {
         'simulation': ['periods', 'agents_per_type'],
-        'economics': ['interest_rate', 'luxury_cost_per_unit'],
+        'economics': ['interest_rate', 'discretionary_goods'],
         'llm': ['model_name', 'temperature', 'max_tokens']
     }
     
@@ -229,5 +229,17 @@ def validate_config(config: Dict[str, Any]) -> None:
     if not (0 <= config['economics']['interest_rate'] <= 1):
         raise ValueError("interest_rate must be between 0 and 1")
     
-    if config['economics']['luxury_cost_per_unit'] <= 0:
-        raise ValueError("luxury_cost_per_unit must be positive")
+    # Validate discretionary_goods structure
+    discretionary_goods = config['economics']['discretionary_goods']
+    if not isinstance(discretionary_goods, dict):
+        raise ValueError("discretionary_goods must be a dictionary")
+    
+    if not discretionary_goods:
+        raise ValueError("discretionary_goods dictionary cannot be empty")
+    
+    for good, price in discretionary_goods.items():
+        if not isinstance(good, str) or not good.strip():
+            raise ValueError(f"discretionary good name must be a non-empty string: {good}")
+        
+        if not isinstance(price, (int, float)) or price <= 0:
+            raise ValueError(f"discretionary_goods[{good}] price must be a positive number")

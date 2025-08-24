@@ -52,11 +52,9 @@ class Simulation:
         self.num_periods = self.config['simulation']['periods']
         self.agents_per_type = self.config['simulation']['agents_per_type']
         self.interest_rate = self.config['economics']['interest_rate']
-        self.luxury_cost_per_unit = self.config['economics']['luxury_cost_per_unit']
         
         self.logger.info(f"Simulation configured for {self.num_periods} periods")
         self.logger.info(f"Interest rate: {self.interest_rate:.1%}")
-        self.logger.info(f"Luxury cost per unit: ${self.luxury_cost_per_unit:.2f}")
         
         # Log agent configuration
         if isinstance(self.agents_per_type, dict):
@@ -64,7 +62,6 @@ class Simulation:
                 self.logger.info(f"Agents per type - {agent_type}: {count}")
         else:
             self.logger.info(f"Agents per type: {self.agents_per_type} (all types)")
-    
     def create_agents(self) -> None:
         """
         Create agents based on the configuration.
@@ -78,8 +75,10 @@ class Simulation:
         for _, agent_type_row in self.agent_types_df.iterrows():
             agent_type = agent_type_row['agent_type']
             income = agent_type_row['income']
-            fixed_cost = agent_type_row['fixed_cost']
-            variable_cost = agent_type_row['variable_cost']
+            housing = agent_type_row['housing']
+            insurance = agent_type_row['insurance']
+            healthcare = agent_type_row['healthcare']
+            repair = agent_type_row['repair']
             
             # Determine number of agents for this type
             if isinstance(self.agents_per_type, dict):
@@ -95,8 +94,11 @@ class Simulation:
                     agent_id=agent_id,
                     agent_type=agent_type,
                     income=income,
-                    fixed_cost=fixed_cost,
-                    variable_cost=variable_cost,
+                    housing=housing,
+                    insurance=insurance,
+                    healthcare=healthcare,
+                    repair=repair,
+                    discretionary_goods=self.config['economics']['discretionary_goods'],
                     model_name=self.config['llm']['model_name'],
                     temperature=self.config['llm']['temperature'],
                     max_tokens=self.config['llm']['max_tokens']
@@ -105,9 +107,15 @@ class Simulation:
                 self.agents.append(agent)
                 agent_id += 1
                 
+                discretionary_summary = ", ".join([
+                    f"{good}=${price}" for good, price in self.config['economics']['discretionary_goods'].items()
+                ])
+                
                 self.logger.debug(
                     f"Created agent {agent_id-1}: {agent_type} "
-                    f"(income=${income}, fixed=${fixed_cost}, variable=${variable_cost})"
+                    f"(income=${income}, housing=${housing}, insurance=${insurance}, "
+                    f"healthcare=${healthcare}, repair=${repair}, "
+                    f"discretionary_goods: {discretionary_summary})"
                 )
         
         self.logger.info(f"Created {len(self.agents)} agents across {len(self.agent_types_df)} types")
@@ -128,7 +136,6 @@ class Simulation:
             print(f"Processing agent {agent.agent_id} ({agent.agent_type}) in period {period_num + 1}")
             try:
                 agent_transactions = agent.process_period(
-                    self.luxury_cost_per_unit,
                     self.interest_rate,
                     period_num
                 )

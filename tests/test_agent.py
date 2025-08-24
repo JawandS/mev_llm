@@ -30,12 +30,14 @@ class TestAgent(unittest.TestCase):
             cls.agent_types_df['agent_type'] == 'young_professional'
         ].iloc[0]
         cls.young_prof_income = young_prof_data['income']
-        cls.young_prof_fixed = young_prof_data['fixed_cost']
-        cls.young_prof_variable = young_prof_data['variable_cost']
+        cls.young_prof_housing = young_prof_data['housing']
+        cls.young_prof_insurance = young_prof_data['insurance']
+        cls.young_prof_healthcare = young_prof_data['healthcare']
+        cls.young_prof_repair = young_prof_data['repair']
         
         # Get economic parameters - config has nested structure
         cls.interest_rate = cls.config['economics']['interest_rate']
-        cls.luxury_cost = cls.config['economics']['luxury_cost_per_unit']
+        cls.discretionary_goods = cls.config['economics']['discretionary_goods']
     
     def setUp(self):
         """Set up test agent instance."""
@@ -43,8 +45,11 @@ class TestAgent(unittest.TestCase):
             agent_id=1,
             agent_type="young_professional",
             income=self.young_prof_income,
-            fixed_cost=self.young_prof_fixed,
-            variable_cost=self.young_prof_variable
+            housing=self.young_prof_housing,
+            insurance=self.young_prof_insurance,
+            healthcare=self.young_prof_healthcare,
+            repair=self.young_prof_repair,
+            discretionary_goods=self.discretionary_goods
         )
     
     def test_agent_initialization(self):
@@ -397,7 +402,7 @@ class TestAgentEconomicDecisions(unittest.TestCase):
         cls.agent_types_df = load_agent_types()
         
         # Get economic parameters
-        cls.luxury_cost = cls.config['economics']['luxury_cost_per_unit']
+        cls.discretionary_goods = cls.config['economics']['discretionary_goods']
     
     def setUp(self):
         """Set up test agents for economic scenarios."""
@@ -405,16 +410,22 @@ class TestAgentEconomicDecisions(unittest.TestCase):
             agent_id=10,
             agent_type="young_professional",
             income=4800.0,
-            fixed_cost=1200.0,
-            variable_cost=600.0
+            housing=800.0,
+            insurance=200.0,
+            healthcare=150.0,
+            repair=50.0,
+            discretionary_goods=self.discretionary_goods
         )
         
         self.low_income = Agent(
             agent_id=11,
             agent_type="low_income",
             income=1800.0,
-            fixed_cost=1000.0,
-            variable_cost=500.0
+            housing=600.0,
+            insurance=250.0,
+            healthcare=120.0,
+            repair=30.0,
+            discretionary_goods=self.discretionary_goods
         )
     
     def test_financial_constraint_scenarios(self):
@@ -473,15 +484,18 @@ class TestAgentEdgeCases(unittest.TestCase):
             agent_id=2,
             agent_type="unemployed",
             income=0.0,
-            fixed_cost=100.0,
-            variable_cost=50.0
+            housing=80.0,
+            insurance=20.0,
+            healthcare=30.0,
+            repair=20.0,
+            discretionary_goods={"entertainment": 8.0, "travel": 15.0}
         )
         
         with patch('random.uniform') as mock_random:
             mock_random.return_value = 25.0
             
             net_income, _ = agent.calculate_net_income()
-            assert net_income == -125.0  # 0 - 100 - 25
+            assert net_income == -150.0  # 0 - (80+20) - (25+25)
     
     def test_agent_with_high_savings_and_low_income(self):
         """Test agent with high savings but low income."""
@@ -489,8 +503,11 @@ class TestAgentEdgeCases(unittest.TestCase):
             agent_id=3,
             agent_type="retiree",
             income=200.0,
-            fixed_cost=300.0,
-            variable_cost=100.0
+            housing=200.0,
+            insurance=100.0,
+            healthcare=80.0,
+            repair=20.0,
+            discretionary_goods={"entertainment": 8.0, "travel": 15.0}
         )
         agent.savings = 10000.0  # High savings
         
