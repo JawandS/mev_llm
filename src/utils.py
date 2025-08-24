@@ -78,10 +78,17 @@ def load_agent_types() -> pd.DataFrame:
     
     try:
         agents_df = pd.read_csv(agents_path)
-        required_columns = ['agent_type', 'income', 'fixed_cost', 'variable_cost']
+        
+        # Build required columns dynamically from config
+        # Load config to get cost categories
+        config = load_config()
+        required_columns = ['agent_type', 'income']
+        required_columns.extend(config['economics']['fixed_costs'])
+        required_columns.extend(config['economics']['variable_costs'])
         
         if not all(col in agents_df.columns for col in required_columns):
-            raise ValueError(f"agents.csv must contain columns: {required_columns}")
+            missing_cols = [col for col in required_columns if col not in agents_df.columns]
+            raise ValueError(f"agents.csv must contain columns: {required_columns}. Missing: {missing_cols}")
         
         return agents_df
         
@@ -196,7 +203,7 @@ def validate_config(config: Dict[str, Any]) -> None:
     """
     required_keys = {
         'simulation': ['periods', 'agents_per_type'],
-        'economics': ['interest_rate', 'luxury_cost_per_unit'],
+        'economics': ['interest_rate', 'discretionary_goods'],
         'llm': ['model_name', 'temperature', 'max_tokens']
     }
     
@@ -212,11 +219,34 @@ def validate_config(config: Dict[str, Any]) -> None:
     if config['simulation']['periods'] <= 0:
         raise ValueError("periods must be positive")
     
-    if config['simulation']['agents_per_type'] <= 0:
-        raise ValueError("agents_per_type must be positive")
+    # Validate agents_per_type (supports both int and dict formats)
+    agents_per_type = config['simulation']['agents_per_type']
+    if isinstance(agents_per_type, int):
+        if agents_per_type <= 0:
+            raise ValueError("agents_per_type must be positive")
+    elif isinstance(agents_per_type, dict):
+        if not agents_per_type:
+            raise ValueError("agents_per_type dictionary cannot be empty")
+        for agent_type, count in agents_per_type.items():
+            if not isinstance(count, int) or count < 0:
+                raise ValueError(f"agents_per_type[{agent_type}] must be a non-negative integer")
+    else:
+        raise ValueError("agents_per_type must be either an integer or a dictionary")
     
     if not (0 <= config['economics']['interest_rate'] <= 1):
         raise ValueError("interest_rate must be between 0 and 1")
     
-    if config['economics']['luxury_cost_per_unit'] <= 0:
-        raise ValueError("luxury_cost_per_unit must be positive")
+    # Validate discretionary_goods structure
+    discretionary_goods = config['economics']['discretionary_goods']
+    if not isinstance(discretionary_goods, dict):
+        raise ValueError("discretionary_goods must be a dictionary")
+    
+    if not discretionary_goods:
+        raise ValueError("discretionary_goods dictionary cannot be empty")
+    
+    for good, price in discretionary_goods.items():
+        if not isinstance(good, str) or not good.strip():
+            raise ValueError(f"discretionary good name must be a non-empty string: {good}")
+        
+        if not isinstance(price, (int, float)) or price <= 0:
+            raise ValueError(f"discretionary_goods[{good}] price must be a positive number")

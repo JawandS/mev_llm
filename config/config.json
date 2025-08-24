@@ -1,11 +1,28 @@
 {
   "simulation": {
-    "periods": 12,
-    "agents_per_type": 1
+    "periods": 52,
+    "agents_per_type": {
+      "young_professional": 1,
+      "family": 1,
+      "retiree": 0,
+      "student": 0,
+      "low_income": 0
+    }
   },
   "economics": {
     "interest_rate": 0.04,
-    "luxury_cost_per_unit": 50.0
+    "discretionary_goods": {
+      "entertainment": 8.00,
+      "travel": 15.00
+    },
+    "fixed_costs": [
+      "housing",
+      "insurance"
+    ],
+    "variable_costs": [
+      "healthcare",
+      "repair"
+    ]
   },
   "llm": {
     "model_name": "qwen2.5:0.5b",

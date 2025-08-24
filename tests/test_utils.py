@@ -40,11 +40,23 @@ class TestLogging:
 class TestConfigLoading:
     """Test configuration loading functions."""
     
+    @classmethod
+    def setup_class(cls):
+        """Load actual configuration for testing."""
+        cls.actual_config = load_config()
+        cls.actual_agent_types = load_agent_types()
+    
     def test_load_config_valid(self):
         """Test loading valid configuration."""
+        # Use actual config values for testing
         config_data = {
-            "simulation": {"periods": 12, "agents_per_type": 5},
-            "economics": {"interest_rate": 0.02, "luxury_cost_per_unit": 50.0},
+            "simulation": {"periods": self.actual_config['simulation']['periods'], "agents_per_type": self.actual_config['simulation']['agents_per_type']},
+            "economics": {
+                "interest_rate": self.actual_config['economics']['interest_rate'], 
+                "discretionary_goods": self.actual_config['economics']['discretionary_goods'],
+                "fixed_costs": self.actual_config['economics']['fixed_costs'],
+                "variable_costs": self.actual_config['economics']['variable_costs']
+            },
             "llm": {"model_name": "gemini-2.0-flash-exp", "temperature": 0.7, "max_tokens": 1000}
         }
         
@@ -70,22 +82,27 @@ class TestConfigLoading:
     
     def test_load_agent_types_valid(self):
         """Test loading valid agent types."""
-        csv_data = "agent_type,income,fixed_cost,variable_cost\nyoung_professional,1200.0,400.0,400.0\n"
+        # Get first row from actual data for testing
+        first_agent = self.actual_agent_types.iloc[0]
+        # Build CSV data using actual column structure
+        columns = list(self.actual_agent_types.columns)
+        row_values = [str(first_agent[col]) for col in columns]
+        csv_data = ",".join(columns) + "\n" + ",".join(row_values) + "\n"
         
         with patch('src.utils.Path') as mock_path:
             mock_path.return_value.exists.return_value = True
             with patch('pandas.read_csv') as mock_read_csv:
-                mock_df = pd.DataFrame({
-                    'agent_type': ['young_professional'],
-                    'income': [1200.0],
-                    'fixed_cost': [400.0],
-                    'variable_cost': [400.0]
-                })
+                # Create mock DataFrame with actual column structure
+                mock_data = {col: [first_agent[col]] for col in columns}
+                mock_df = pd.DataFrame(mock_data)
                 mock_read_csv.return_value = mock_df
                 
-                result = load_agent_types()
-                assert len(result) == 1
-                assert result.iloc[0]['agent_type'] == 'young_professional'
+                # Mock load_config to return a proper config structure
+                with patch('src.utils.load_config') as mock_load_config:
+                    mock_load_config.return_value = self.actual_config
+                    result = load_agent_types()
+                    assert len(result) == 1
+                    assert result.iloc[0]['agent_type'] == first_agent['agent_type']
     
     def test_load_agent_types_missing_columns(self):
         """Test loading agent types with missing required columns."""
@@ -95,18 +112,29 @@ class TestConfigLoading:
                 mock_df = pd.DataFrame({'agent_type': ['test']})  # Missing required columns
                 mock_read_csv.return_value = mock_df
                 
-                with pytest.raises(ValueError, match="must contain columns"):
-                    load_agent_types()
+                # Mock load_config to return a proper config structure
+                with patch('src.utils.load_config') as mock_load_config:
+                    mock_load_config.return_value = self.actual_config
+                    with pytest.raises(ValueError, match="must contain columns"):
+                        load_agent_types()
 
 
 class TestConfigValidation:
     """Test configuration validation."""
     
+    @classmethod
+    def setup_class(cls):
+        """Load actual configuration for testing."""
+        cls.actual_config = load_config()
+    
     def test_validate_config_valid(self):
         """Test validation of valid configuration."""
         config = {
-            "simulation": {"periods": 12, "agents_per_type": 5},
-            "economics": {"interest_rate": 0.02, "luxury_cost_per_unit": 50.0},
+            "simulation": {"periods": self.actual_config['simulation']['periods'], "agents_per_type": self.actual_config['simulation']['agents_per_type']},
+            "economics": {
+                "interest_rate": self.actual_config['economics']['interest_rate'], 
+                "discretionary_goods": self.actual_config['economics']['discretionary_goods']
+            },
             "llm": {"model_name": "gemini-2.0-flash-exp", "temperature": 0.7, "max_tokens": 1000}
         }
         # Should not raise any exception
@@ -115,7 +143,7 @@ class TestConfigValidation:
     def test_validate_config_missing_section(self):
         """Test validation with missing section."""
         config = {
-            "simulation": {"periods": 12, "agents_per_type": 5},
+            "simulation": {"periods": self.actual_config['simulation']['periods'], "agents_per_type": self.actual_config['simulation']['agents_per_type']},
             # Missing economics and llm sections
         }
         with pytest.raises(ValueError, match="Missing configuration section"):
@@ -124,8 +152,11 @@ class TestConfigValidation:
     def test_validate_config_missing_key(self):
         """Test validation with missing key."""
         config = {
-            "simulation": {"periods": 12},  # Missing agents_per_type
-            "economics": {"interest_rate": 0.02, "luxury_cost_per_unit": 50.0},
+            "simulation": {"periods": self.actual_config['simulation']['periods']},  # Missing agents_per_type
+            "economics": {
+                "interest_rate": self.actual_config['economics']['interest_rate'], 
+                "discretionary_goods": self.actual_config['economics']['discretionary_goods']
+            },
             "llm": {"model_name": "gemini-2.0-flash-exp", "temperature": 0.7, "max_tokens": 1000}
         }
         with pytest.raises(ValueError, match="Missing configuration key"):
@@ -135,8 +166,11 @@ class TestConfigValidation:
         """Test validation with invalid values."""
         # Test negative periods
         config = {
-            "simulation": {"periods": -1, "agents_per_type": 5},
-            "economics": {"interest_rate": 0.02, "luxury_cost_per_unit": 50.0},
+            "simulation": {"periods": -1, "agents_per_type": self.actual_config['simulation']['agents_per_type']},
+            "economics": {
+                "interest_rate": self.actual_config['economics']['interest_rate'], 
+                "discretionary_goods": self.actual_config['economics']['discretionary_goods']
+            },
             "llm": {"model_name": "gemini-2.0-flash-exp", "temperature": 0.7, "max_tokens": 1000}
         }
         with pytest.raises(ValueError, match="periods must be positive"):
@@ -146,6 +180,65 @@ class TestConfigValidation:
         config["simulation"]["periods"] = 12
         config["economics"]["interest_rate"] = 1.5  # > 1
         with pytest.raises(ValueError, match="interest_rate must be between 0 and 1"):
+            validate_config(config)
+
+    def test_validate_config_agents_per_type_formats(self):
+        """Test validation of different agents_per_type formats."""
+        base_config = {
+            "simulation": {"periods": 12},
+            "economics": {"interest_rate": 0.04, "discretionary_goods": {"entertainment": 8.0, "travel": 15.0}},
+            "llm": {"model_name": "gemini-2.0-flash-exp", "temperature": 0.7, "max_tokens": 1000}
+        }
+        
+        # Test valid integer format
+        config = base_config.copy()
+        config["simulation"]["agents_per_type"] = 2
+        validate_config(config)  # Should not raise
+        
+        # Test valid dictionary format
+        config = base_config.copy()
+        config["simulation"]["agents_per_type"] = {"young_professional": 2, "family": 1}
+        validate_config(config)  # Should not raise
+        
+        # Test negative integer
+        config = base_config.copy()
+        config["simulation"]["agents_per_type"] = -1
+        with pytest.raises(ValueError, match="agents_per_type must be positive"):
+            validate_config(config)
+        
+        # Test zero integer (should pass)
+        config = base_config.copy()
+        config["simulation"]["agents_per_type"] = 0
+        with pytest.raises(ValueError, match="agents_per_type must be positive"):
+            validate_config(config)
+        
+        # Test empty dictionary
+        config = base_config.copy()
+        config["simulation"]["agents_per_type"] = {}
+        with pytest.raises(ValueError, match="agents_per_type dictionary cannot be empty"):
+            validate_config(config)
+        
+        # Test dictionary with negative values
+        config = base_config.copy()
+        config["simulation"]["agents_per_type"] = {"young_professional": -1}
+        with pytest.raises(ValueError, match="agents_per_type\\[young_professional\\] must be a non-negative integer"):
+            validate_config(config)
+        
+        # Test dictionary with non-integer values
+        config = base_config.copy()
+        config["simulation"]["agents_per_type"] = {"young_professional": "invalid"}
+        with pytest.raises(ValueError, match="agents_per_type\\[young_professional\\] must be a non-negative integer"):
+            validate_config(config)
+        
+        # Test dictionary with zero values (should pass)
+        config = base_config.copy()
+        config["simulation"]["agents_per_type"] = {"young_professional": 0, "family": 1}
+        validate_config(config)  # Should not raise
+        
+        # Test invalid type (neither int nor dict)
+        config = base_config.copy()
+        config["simulation"]["agents_per_type"] = "invalid"
+        with pytest.raises(ValueError, match="agents_per_type must be either an integer or a dictionary"):
             validate_config(config)
 
 

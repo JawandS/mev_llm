@@ -52,35 +52,74 @@ class Simulation:
         self.num_periods = self.config['simulation']['periods']
         self.agents_per_type = self.config['simulation']['agents_per_type']
         self.interest_rate = self.config['economics']['interest_rate']
-        self.luxury_cost_per_unit = self.config['economics']['luxury_cost_per_unit']
         
         self.logger.info(f"Simulation configured for {self.num_periods} periods")
         self.logger.info(f"Interest rate: {self.interest_rate:.1%}")
-        self.logger.info(f"Luxury cost per unit: ${self.luxury_cost_per_unit:.2f}")
-    
+        
+        # Log economic structure configuration
+        fixed_costs = self.config['economics']['fixed_costs']
+        variable_costs = self.config['economics']['variable_costs']
+        discretionary_goods = self.config['economics']['discretionary_goods']
+        
+        self.logger.info(f"Fixed cost categories: {', '.join(fixed_costs)}")
+        self.logger.info(f"Variable cost categories: {', '.join(variable_costs)}")
+        
+        discretionary_summary = ", ".join([f"{good}: ${price:.2f}" for good, price in discretionary_goods.items()])
+        self.logger.info(f"Discretionary goods: {discretionary_summary}")
+        
+        # Log agent configuration
+        if isinstance(self.agents_per_type, dict):
+            for agent_type, count in self.agents_per_type.items():
+                self.logger.info(f"Agents per type - {agent_type}: {count}")
+        else:
+            self.logger.info(f"Agents per type: {self.agents_per_type} (all types)")
     def create_agents(self) -> None:
         """
         Create agents based on the configuration.
         
         Creates the specified number of agents for each agent type
-        defined in agents.csv.
+        defined in agents.csv. Supports both legacy single number format
+        and new dictionary format for agents_per_type.
         """
         agent_id = 0
         
         for _, agent_type_row in self.agent_types_df.iterrows():
             agent_type = agent_type_row['agent_type']
             income = agent_type_row['income']
-            fixed_cost = agent_type_row['fixed_cost']
-            variable_cost = agent_type_row['variable_cost']
+            
+            # Dynamically extract fixed costs from config
+            fixed_costs = {}
+            for cost_type in self.config['economics']['fixed_costs']:
+                if cost_type in agent_type_row:
+                    fixed_costs[cost_type] = agent_type_row[cost_type]
+                else:
+                    raise ValueError(f"Fixed cost '{cost_type}' not found in agents.csv for {agent_type}")
+            
+            # Dynamically extract variable costs from config
+            variable_costs = {}
+            for cost_type in self.config['economics']['variable_costs']:
+                if cost_type in agent_type_row:
+                    variable_costs[cost_type] = agent_type_row[cost_type]
+                else:
+                    raise ValueError(f"Variable cost '{cost_type}' not found in agents.csv for {agent_type}")
+            
+            # Determine number of agents for this type
+            if isinstance(self.agents_per_type, dict):
+                # New dictionary format - get count for this specific type
+                num_agents = self.agents_per_type.get(agent_type, 0)
+            else:
+                # Legacy format - same number for all types
+                num_agents = self.agents_per_type
             
             # Create multiple agents of this type
-            for i in range(self.agents_per_type):
+            for i in range(num_agents):
                 agent = Agent(
                     agent_id=agent_id,
                     agent_type=agent_type,
                     income=income,
-                    fixed_cost=fixed_cost,
-                    variable_cost=variable_cost,
+                    fixed_costs=fixed_costs,
+                    variable_costs=variable_costs,
+                    discretionary_goods=self.config['economics']['discretionary_goods'],
                     model_name=self.config['llm']['model_name'],
                     temperature=self.config['llm']['temperature'],
                     max_tokens=self.config['llm']['max_tokens']
@@ -89,9 +128,18 @@ class Simulation:
                 self.agents.append(agent)
                 agent_id += 1
                 
+                # Create dynamic cost summary
+                fixed_summary = ", ".join([f"{cost}=${value}" for cost, value in fixed_costs.items()])
+                variable_summary = ", ".join([f"{cost}=${value}" for cost, value in variable_costs.items()])
+                discretionary_summary = ", ".join([
+                    f"{good}=${price}" for good, price in self.config['economics']['discretionary_goods'].items()
+                ])
+                
                 self.logger.debug(
                     f"Created agent {agent_id-1}: {agent_type} "
-                    f"(income=${income}, fixed=${fixed_cost}, variable=${variable_cost})"
+                    f"(income=${income}, fixed_costs: {fixed_summary}, "
+                    f"variable_costs: {variable_summary}, "
+                    f"discretionary_goods: {discretionary_summary})"
                 )
         
         self.logger.info(f"Created {len(self.agents)} agents across {len(self.agent_types_df)} types")
@@ -112,8 +160,8 @@ class Simulation:
             print(f"Processing agent {agent.agent_id} ({agent.agent_type}) in period {period_num + 1}")
             try:
                 agent_transactions = agent.process_period(
-                    self.luxury_cost_per_unit,
-                    self.interest_rate
+                    self.interest_rate,
+                    period_num
                 )
                 period_transactions.extend(agent_transactions)
                 
@@ -143,22 +191,37 @@ class Simulation:
         # Add period transactions to total
         self.transactions.extend(period_transactions)
         
-        # Log period summary
-        period_luxury_purchases = sum(
-            1 for t in period_transactions 
-            if t['purchase_type'] == 'luxury' and t['purchase_quantity'] > 0
-        )
+        # Log period summary - count discretionary purchases dynamically
+        discretionary_goods_list = list(self.config['economics']['discretionary_goods'].keys())
         
-        total_luxury_units = sum(
-            t['purchase_quantity'] for t in period_transactions 
-            if t['purchase_type'] == 'luxury'
-        )
+        # Count agents who made any discretionary purchases
+        agents_with_purchases = set()
+        discretionary_purchases = {}
         
-        self.logger.info(
-            f"Period {period_num + 1} complete: "
-            f"{period_luxury_purchases} agents made luxury purchases, "
-            f"{total_luxury_units} total luxury units purchased"
-        )
+        for good in discretionary_goods_list:
+            discretionary_purchases[good] = sum(
+                t['purchase_quantity'] for t in period_transactions 
+                if t['purchase_type'] == good and t['purchase_quantity'] > 0
+            )
+            # Track which agents made purchases of this good
+            for t in period_transactions:
+                if t['purchase_type'] == good and t['purchase_quantity'] > 0:
+                    agents_with_purchases.add(t['agent_id'])
+        
+        # Create summary of purchases
+        purchase_summary = ", ".join([
+            f"{good}: {qty} units" for good, qty in discretionary_purchases.items() if qty > 0
+        ])
+        
+        if purchase_summary:
+            self.logger.info(
+                f"Period {period_num + 1} complete: "
+                f"{len(agents_with_purchases)} agents made discretionary purchases ({purchase_summary})"
+            )
+        else:
+            self.logger.info(
+                f"Period {period_num + 1} complete: No discretionary purchases made"
+            )
     
     def run_simulation(self) -> Path:
         """
