@@ -78,10 +78,17 @@ def load_agent_types() -> pd.DataFrame:
     
     try:
         agents_df = pd.read_csv(agents_path)
-        required_columns = ['agent_type', 'income', 'housing', 'insurance', 'healthcare', 'repair']
+        
+        # Build required columns dynamically from config
+        # Load config to get cost categories
+        config = load_config()
+        required_columns = ['agent_type', 'income']
+        required_columns.extend(config['economics']['fixed_costs'])
+        required_columns.extend(config['economics']['variable_costs'])
         
         if not all(col in agents_df.columns for col in required_columns):
-            raise ValueError(f"agents.csv must contain columns: {required_columns}")
+            missing_cols = [col for col in required_columns if col not in agents_df.columns]
+            raise ValueError(f"agents.csv must contain columns: {required_columns}. Missing: {missing_cols}")
         
         return agents_df
         

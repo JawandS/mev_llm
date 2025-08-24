@@ -42,26 +42,22 @@ class Agent:
         agent_id: int, 
         agent_type: str, 
         income: float, 
-        housing: float, 
-        insurance: float,
-        healthcare: float,
-        repair: float,
+        fixed_costs: Dict[str, float],
+        variable_costs: Dict[str, float],
         discretionary_goods: Dict[str, float],
         model_name: str = "llama3.2",
         temperature: float = 0.7,
         max_tokens: int = 1000
     ):
         """
-        Initialize an economic agent with granular cost structure.
+        Initialize an economic agent with dynamic cost structure.
         
         Args:
             agent_id: Unique identifier for this agent
             agent_type: Type of agent (e.g., 'young_professional', 'family')
             income: Weekly income
-            housing: Fixed weekly housing expenses
-            insurance: Fixed weekly insurance expenses
-            healthcare: Maximum variable weekly healthcare expenses
-            repair: Maximum variable weekly repair expenses
+            fixed_costs: Dictionary of fixed cost categories and values
+            variable_costs: Dictionary of variable cost categories and values (max amounts)
             discretionary_goods: Dictionary of discretionary goods and their prices
             model_name: Name of the LLM model to use
             temperature: LLM temperature for response variability
@@ -70,22 +66,28 @@ class Agent:
         self.agent_id = agent_id
         self.agent_type = agent_type
         self.income = income
-        self.housing = housing
-        self.insurance = insurance
-        self.healthcare = healthcare
-        self.repair = repair
+        self.fixed_costs = fixed_costs
+        self.variable_costs = variable_costs
         self.discretionary_goods = discretionary_goods
         
-        # Calculate total fixed and variable costs for compatibility
-        self.fixed_cost = housing + insurance
-        self.variable_cost = healthcare + repair
+        # Calculate totals for compatibility and easy access
+        self.fixed_cost = sum(fixed_costs.values())
+        self.variable_cost = sum(variable_costs.values())
+        
+        # Store individual cost components for backward compatibility
+        # This allows existing code to still access self.housing, self.insurance, etc.
+        for cost_name, cost_value in fixed_costs.items():
+            setattr(self, cost_name, cost_value)
+        for cost_name, cost_value in variable_costs.items():
+            setattr(self, cost_name, cost_value)
         
         # Financial state
         self.savings = 0.0
         self.period = 0
-        self.actual_healthcare_cost = 0.0
-        self.actual_repair_cost = 0.0
-        self.actual_variable_cost = 0.0  # Total of healthcare + repair
+        
+        # Initialize actual variable cost tracking dynamically
+        self.actual_variable_costs = {cost_name: 0.0 for cost_name in variable_costs.keys()}
+        self.actual_variable_cost = 0.0  # Total of all variable costs
         
         # Chat history for this agent
         self.chat_history: List[Dict[str, Any]] = []
@@ -104,17 +106,27 @@ class Agent:
         Returns:
             Net income (can be negative)
         """
-        # Calculate actual variable costs as random values up to the maximum
-        self.actual_healthcare_cost = random.uniform(0, self.healthcare)
-        self.actual_repair_cost = random.uniform(0, self.repair)
-        self.actual_variable_cost = self.actual_healthcare_cost + self.actual_repair_cost
+        # Calculate actual variable costs as random values up to the maximum for each category
+        total_actual_variable_cost = 0.0
         
+        for cost_name, max_cost in self.variable_costs.items():
+            actual_cost = random.uniform(0, max_cost)
+            self.actual_variable_costs[cost_name] = actual_cost
+            total_actual_variable_cost += actual_cost
+            # Also set individual attributes for backward compatibility
+            setattr(self, f"actual_{cost_name}_cost", actual_cost)
+        
+        self.actual_variable_cost = total_actual_variable_cost
         net_income = self.income - self.fixed_cost - self.actual_variable_cost
+        
+        # Create dynamic logging message
+        fixed_summary = ", ".join([f"{cost}=${value:.2f}" for cost, value in self.fixed_costs.items()])
+        variable_summary = ", ".join([f"{cost}=${self.actual_variable_costs[cost]:.2f}" for cost in self.variable_costs.keys()])
         
         self.logger.debug(
             f"Period {self.period}: Income=${self.income:.2f}, "
-            f"Housing=${self.housing:.2f}, Insurance=${self.insurance:.2f}, "
-            f"Healthcare=${self.actual_healthcare_cost:.2f}, Repair=${self.actual_repair_cost:.2f}, "
+            f"Fixed costs: {fixed_summary}, "
+            f"Variable costs: {variable_summary}, "
             f"Net=${net_income:.2f}"
         )
         

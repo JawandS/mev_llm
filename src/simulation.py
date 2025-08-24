@@ -56,6 +56,17 @@ class Simulation:
         self.logger.info(f"Simulation configured for {self.num_periods} periods")
         self.logger.info(f"Interest rate: {self.interest_rate:.1%}")
         
+        # Log economic structure configuration
+        fixed_costs = self.config['economics']['fixed_costs']
+        variable_costs = self.config['economics']['variable_costs']
+        discretionary_goods = self.config['economics']['discretionary_goods']
+        
+        self.logger.info(f"Fixed cost categories: {', '.join(fixed_costs)}")
+        self.logger.info(f"Variable cost categories: {', '.join(variable_costs)}")
+        
+        discretionary_summary = ", ".join([f"{good}: ${price:.2f}" for good, price in discretionary_goods.items()])
+        self.logger.info(f"Discretionary goods: {discretionary_summary}")
+        
         # Log agent configuration
         if isinstance(self.agents_per_type, dict):
             for agent_type, count in self.agents_per_type.items():
@@ -75,10 +86,22 @@ class Simulation:
         for _, agent_type_row in self.agent_types_df.iterrows():
             agent_type = agent_type_row['agent_type']
             income = agent_type_row['income']
-            housing = agent_type_row['housing']
-            insurance = agent_type_row['insurance']
-            healthcare = agent_type_row['healthcare']
-            repair = agent_type_row['repair']
+            
+            # Dynamically extract fixed costs from config
+            fixed_costs = {}
+            for cost_type in self.config['economics']['fixed_costs']:
+                if cost_type in agent_type_row:
+                    fixed_costs[cost_type] = agent_type_row[cost_type]
+                else:
+                    raise ValueError(f"Fixed cost '{cost_type}' not found in agents.csv for {agent_type}")
+            
+            # Dynamically extract variable costs from config
+            variable_costs = {}
+            for cost_type in self.config['economics']['variable_costs']:
+                if cost_type in agent_type_row:
+                    variable_costs[cost_type] = agent_type_row[cost_type]
+                else:
+                    raise ValueError(f"Variable cost '{cost_type}' not found in agents.csv for {agent_type}")
             
             # Determine number of agents for this type
             if isinstance(self.agents_per_type, dict):
@@ -94,10 +117,8 @@ class Simulation:
                     agent_id=agent_id,
                     agent_type=agent_type,
                     income=income,
-                    housing=housing,
-                    insurance=insurance,
-                    healthcare=healthcare,
-                    repair=repair,
+                    fixed_costs=fixed_costs,
+                    variable_costs=variable_costs,
                     discretionary_goods=self.config['economics']['discretionary_goods'],
                     model_name=self.config['llm']['model_name'],
                     temperature=self.config['llm']['temperature'],
@@ -107,14 +128,17 @@ class Simulation:
                 self.agents.append(agent)
                 agent_id += 1
                 
+                # Create dynamic cost summary
+                fixed_summary = ", ".join([f"{cost}=${value}" for cost, value in fixed_costs.items()])
+                variable_summary = ", ".join([f"{cost}=${value}" for cost, value in variable_costs.items()])
                 discretionary_summary = ", ".join([
                     f"{good}=${price}" for good, price in self.config['economics']['discretionary_goods'].items()
                 ])
                 
                 self.logger.debug(
                     f"Created agent {agent_id-1}: {agent_type} "
-                    f"(income=${income}, housing=${housing}, insurance=${insurance}, "
-                    f"healthcare=${healthcare}, repair=${repair}, "
+                    f"(income=${income}, fixed_costs: {fixed_summary}, "
+                    f"variable_costs: {variable_summary}, "
                     f"discretionary_goods: {discretionary_summary})"
                 )
         
@@ -167,22 +191,37 @@ class Simulation:
         # Add period transactions to total
         self.transactions.extend(period_transactions)
         
-        # Log period summary
-        period_luxury_purchases = sum(
-            1 for t in period_transactions 
-            if t['purchase_type'] == 'luxury' and t['purchase_quantity'] > 0
-        )
+        # Log period summary - count discretionary purchases dynamically
+        discretionary_goods_list = list(self.config['economics']['discretionary_goods'].keys())
         
-        total_luxury_units = sum(
-            t['purchase_quantity'] for t in period_transactions 
-            if t['purchase_type'] == 'luxury'
-        )
+        # Count agents who made any discretionary purchases
+        agents_with_purchases = set()
+        discretionary_purchases = {}
         
-        self.logger.info(
-            f"Period {period_num + 1} complete: "
-            f"{period_luxury_purchases} agents made luxury purchases, "
-            f"{total_luxury_units} total luxury units purchased"
-        )
+        for good in discretionary_goods_list:
+            discretionary_purchases[good] = sum(
+                t['purchase_quantity'] for t in period_transactions 
+                if t['purchase_type'] == good and t['purchase_quantity'] > 0
+            )
+            # Track which agents made purchases of this good
+            for t in period_transactions:
+                if t['purchase_type'] == good and t['purchase_quantity'] > 0:
+                    agents_with_purchases.add(t['agent_id'])
+        
+        # Create summary of purchases
+        purchase_summary = ", ".join([
+            f"{good}: {qty} units" for good, qty in discretionary_purchases.items() if qty > 0
+        ])
+        
+        if purchase_summary:
+            self.logger.info(
+                f"Period {period_num + 1} complete: "
+                f"{len(agents_with_purchases)} agents made discretionary purchases ({purchase_summary})"
+            )
+        else:
+            self.logger.info(
+                f"Period {period_num + 1} complete: No discretionary purchases made"
+            )
     
     def run_simulation(self) -> Path:
         """
